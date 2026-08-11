@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.pnpm-store/
+npm-debug.log*
+pnpm-debug.log*
