@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -100,9 +101,17 @@ export class WindowsNativeHost implements PlatformHost {
   }
 
   async setAutoStart(enabled: boolean): Promise<boolean> {
-    const scriptPath = process.argv[1] ? resolve(process.argv[1]) : '';
-    const executablePath = process.execPath;
-    const argumentsText = scriptPath ? `"${scriptPath}" --silent` : '--silent';
+    const scriptArgument = process.argv[1] ?? '';
+    const scriptPath = /\.(?:c|m)?js$/i.test(scriptArgument) ? resolve(scriptArgument) : '';
+    const packagedTrayLauncher = resolve(dirname(process.execPath), 'SelectionForwardTray.exe');
+    const executablePath = !scriptPath && existsSync(packagedTrayLauncher)
+      ? packagedTrayLauncher
+      : process.execPath;
+    const argumentsText = scriptPath
+      ? `"${scriptPath}" --silent`
+      : executablePath === process.execPath
+        ? '--silent'
+        : '';
     return this.addon.setAutoStart(enabled, executablePath, argumentsText);
   }
 }
@@ -113,6 +122,10 @@ function resolveNativeModulePath(): string {
   }
 
   const currentDirectory = dirname(fileURLToPath(import.meta.url));
+  const packagedPath = resolve(dirname(process.execPath), 'selection_forward_win32_ui.node');
+  if (existsSync(packagedPath)) {
+    return packagedPath;
+  }
   return resolve(
     currentDirectory,
     '../../../native/win32/build/Release/selection_forward_win32_ui.node',

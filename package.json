@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:native": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-native.ps1",
+    "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
     "check:native": "node scripts/check-native.cjs",
     "start": "tsc -p tsconfig.json && node dist/index.js --headless",
     "start:tray": "tsc -p tsconfig.json && node dist/index.js --tray"
@@ -22,7 +23,10 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "esbuild": "^0.28.2",
     "node-gyp": "13.0.1",
+    "postject": "1.0.0-alpha.6",
+    "rcedit": "^5.0.2",
     "typescript": "^5.7.0"
   }
 }
