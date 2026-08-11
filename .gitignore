@@ -1,5 +1,6 @@
 node_modules/
 dist/
+native/win32/build/
 .pnpm-store/
 npm-debug.log*
 pnpm-debug.log*
