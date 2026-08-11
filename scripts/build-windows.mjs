@@ -12,7 +12,7 @@ const { inject } = require('postject');
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const intermediateDirectory = join(projectRoot, 'build', 'windows');
 const releaseDirectory = join(projectRoot, 'release', 'windows-x64');
-const bundledEntry = join(intermediateDirectory, 'main.mjs');
+const bundledEntry = join(intermediateDirectory, 'main.cjs');
 const seaBlob = join(intermediateDirectory, 'sea-prep.blob');
 const seaConfig = join(intermediateDirectory, 'sea-config.json');
 const executablePath = join(releaseDirectory, 'SelectionForward.exe');
@@ -50,12 +50,15 @@ await build({
   entryPoints: [join(projectRoot, 'src', 'index.ts')],
   outfile: bundledEntry,
   bundle: true,
-  format: 'esm',
+  format: 'cjs',
   platform: 'node',
   target: 'node24',
   sourcemap: false,
   minify: true,
   packages: 'external',
+  define: {
+    'import.meta.url': '__filename',
+  },
   banner: { js: '// Selection Forward — bundled for Node.js SEA' },
 });
 
@@ -65,7 +68,6 @@ await writeFile(
     {
       main: bundledEntry,
       output: seaBlob,
-      mainFormat: 'module',
       disableExperimentalSEAWarning: true,
       useSnapshot: false,
       useCodeCache: false,

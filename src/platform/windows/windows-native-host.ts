@@ -121,11 +121,11 @@ function resolveNativeModulePath(): string {
     return process.env.SELECTION_FORWARD_NATIVE_PATH;
   }
 
-  const currentDirectory = dirname(fileURLToPath(import.meta.url));
   const packagedPath = resolve(dirname(process.execPath), 'selection_forward_win32_ui.node');
   if (existsSync(packagedPath)) {
     return packagedPath;
   }
+  const currentDirectory = dirname(fileURLToPath(import.meta.url));
   return resolve(
     currentDirectory,
     '../../../native/win32/build/Release/selection_forward_win32_ui.node',
