@@ -85,6 +85,14 @@ export class TriggerController {
           this.triggerCandidate('hover');
         }
         return;
+      case 'shortcut':
+        if (this.config.triggerMode === 'custom') {
+          this.triggerCandidate('shortcut');
+        }
+        return;
+      case 'shortcut-conflict':
+        console.error(`[shortcut] 快捷键注册冲突：${event.value}`);
+        return;
       case 'toggle-enabled':
         this.replaceConfig({ ...this.config, enabled: !this.config.enabled });
         return;
@@ -92,6 +100,30 @@ export class TriggerController {
         if (isTriggerMode(event.value)) {
           this.replaceConfig({ ...this.config, triggerMode: event.value });
         }
+        return;
+      case 'toggle-hover':
+        this.replaceConfig({
+          ...this.config,
+          indicatorAction: this.config.indicatorAction === 'hover' ? 'click' : 'hover',
+        });
+        return;
+      case 'set-icon-size':
+        this.replaceConfig({
+          ...this.config,
+          iconSize: clampInteger(event.value, this.config.iconSize, 12, 64),
+        });
+        return;
+      case 'set-dot-size':
+        this.replaceConfig({
+          ...this.config,
+          dotSize: clampInteger(event.value, this.config.dotSize, 6, 32),
+        });
+        return;
+      case 'set-icon-path':
+        this.replaceConfig({ ...this.config, iconPath: event.value });
+        return;
+      case 'set-custom-shortcut':
+        this.replaceConfig({ ...this.config, customShortcut: event.value });
         return;
       case 'open-settings':
         return;
@@ -110,6 +142,11 @@ export class TriggerController {
       enabled: config.enabled,
       triggerMode: config.triggerMode,
       autoStart: config.autoStart,
+      indicatorAction: config.indicatorAction,
+      iconSize: config.iconSize,
+      dotSize: config.dotSize,
+      iconPath: config.iconPath,
+      customShortcut: config.customShortcut,
     });
     this.options.onConfigChange(config);
   }
@@ -137,6 +174,9 @@ export class TriggerController {
         x: candidate.position?.x,
         y: candidate.position?.y,
         style: this.config.triggerMode,
+        size:
+          this.config.triggerMode === 'dot' ? this.config.dotSize : this.config.iconSize,
+        iconPath: this.config.iconPath,
         hoverEnabled: this.config.indicatorAction === 'hover',
         hoverDelayMs: this.config.hoverDelayMs,
       });
@@ -223,4 +263,16 @@ function isValidPoint(point: ScreenPoint): boolean {
 
 function getModifierKey(mode: TriggerMode): string | undefined {
   return ({ ctrl: 'Control', alt: 'Alt', shift: 'Shift' } as Partial<Record<TriggerMode, string>>)[mode];
+}
+
+function clampInteger(
+  value: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed)
+    ? Math.min(maximum, Math.max(minimum, parsed))
+    : fallback;
 }

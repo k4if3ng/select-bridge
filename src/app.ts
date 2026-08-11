@@ -9,12 +9,14 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
   const runtime = loadRuntimeOptions(argv);
   const configStore = new ConfigStore();
   let config = await configStore.load();
-  config = applyRuntimeOverrides(config, runtime.triggerMode);
+  config = applyRuntimeOverrides(config, runtime.triggerMode, runtime.customShortcut);
 
   const platform = await createPlatformHost(runtime.mode);
   if (
     platform.kind === 'headless' &&
-    (config.triggerMode === 'icon' || config.triggerMode === 'dot')
+    (config.triggerMode === 'icon' ||
+      config.triggerMode === 'dot' ||
+      config.triggerMode === 'custom')
   ) {
     console.warn(`[platform] headless 不显示 ${config.triggerMode}，本次运行改用 immediate。`);
     config = { ...config, triggerMode: 'immediate' };
@@ -64,6 +66,22 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
       },
     );
   });
+
+  if (config.triggerMode === 'custom') {
+    const registration = platform.registerShortcut(config.customShortcut);
+    if (!registration.ok) {
+      console.error(
+        `[shortcut] 无法注册 ${config.customShortcut}（错误码 ${registration.errorCode}），本次运行改用 immediate。`,
+      );
+      config = { ...config, triggerMode: 'immediate' };
+      controller.replaceConfig(config);
+    } else if (registration.normalized !== config.customShortcut) {
+      config = { ...config, customShortcut: registration.normalized };
+      controller.replaceConfig(config);
+    }
+  } else {
+    platform.registerShortcut('');
+  }
   platform.updateState(toPlatformState(config));
 
   hook = new SelectionHookAdapter({
@@ -126,8 +144,13 @@ async function handlePlatformEvent(
 function applyRuntimeOverrides(
   config: AppConfig,
   triggerMode: AppConfig['triggerMode'] | undefined,
+  customShortcut: string | undefined,
 ): AppConfig {
-  return triggerMode ? { ...config, triggerMode } : config;
+  return {
+    ...config,
+    ...(triggerMode ? { triggerMode } : {}),
+    ...(customShortcut ? { customShortcut } : {}),
+  };
 }
 
 function toPlatformState(config: AppConfig): Parameters<PlatformHost['updateState']>[0] {
@@ -135,5 +158,10 @@ function toPlatformState(config: AppConfig): Parameters<PlatformHost['updateStat
     enabled: config.enabled,
     triggerMode: config.triggerMode,
     autoStart: config.autoStart,
+    indicatorAction: config.indicatorAction,
+    iconSize: config.iconSize,
+    dotSize: config.dotSize,
+    iconPath: config.iconPath,
+    customShortcut: config.customShortcut,
   };
 }

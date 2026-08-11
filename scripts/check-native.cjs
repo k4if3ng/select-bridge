@@ -1,7 +1,8 @@
-const addon = require('../native/win32/build/Release/selection_forward_win32.node');
+const addon = require('../native/win32/build/Release/selection_forward_win32_ui.node');
 
 const expectedExports = [
   'hideIndicator',
+  'registerShortcut',
   'setAutoStart',
   'showIndicator',
   'start',

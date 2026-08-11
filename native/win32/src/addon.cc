@@ -22,6 +22,22 @@ napi_value CreateUndefined(napi_env env) {
   return result;
 }
 
+napi_value CreateShortcutResult(napi_env env, const Win32Host::ShortcutResult& registration) {
+  napi_value result = nullptr;
+  napi_value ok = nullptr;
+  napi_value error_code = nullptr;
+  napi_value normalized = nullptr;
+  napi_create_object(env, &result);
+  napi_get_boolean(env, registration.ok, &ok);
+  napi_create_uint32(env, registration.error_code, &error_code);
+  napi_create_string_utf8(
+      env, registration.normalized.c_str(), registration.normalized.size(), &normalized);
+  napi_set_named_property(env, result, "ok", ok);
+  napi_set_named_property(env, result, "errorCode", error_code);
+  napi_set_named_property(env, result, "normalized", normalized);
+  return result;
+}
+
 void ThrowLastError(napi_env env, const char* message) {
   napi_throw_error(env, nullptr, message);
 }
@@ -130,47 +146,91 @@ napi_value Stop(napi_env env, napi_callback_info) {
 }
 
 napi_value UpdateTray(napi_env env, napi_callback_info info) {
-  size_t count = 3;
-  napi_value arguments[3]{};
+  size_t count = 8;
+  napi_value arguments[8]{};
   napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
 
   bool enabled = true;
   bool auto_start = false;
   std::string trigger_mode;
-  if (count != 3 || !GetBoolean(env, arguments[0], &enabled) ||
+  std::string indicator_action;
+  int icon_size = 24;
+  int dot_size = 12;
+  std::string icon_path;
+  std::string custom_shortcut;
+  if (count != 8 || !GetBoolean(env, arguments[0], &enabled) ||
       !GetUtf8(env, arguments[1], &trigger_mode) ||
-      !GetBoolean(env, arguments[2], &auto_start)) {
-    ThrowLastError(env, "updateTray(enabled, triggerMode, autoStart) received invalid arguments");
+      !GetBoolean(env, arguments[2], &auto_start) ||
+      !GetUtf8(env, arguments[3], &indicator_action) ||
+      !GetInt32OrNull(env, arguments[4], &icon_size) ||
+      !GetInt32OrNull(env, arguments[5], &dot_size) ||
+      !GetUtf8(env, arguments[6], &icon_path) ||
+      !GetUtf8(env, arguments[7], &custom_shortcut)) {
+    ThrowLastError(env, "updateTray received invalid arguments");
     return nullptr;
   }
 
-  return CreateBoolean(env, g_host && g_host->UpdateTray(enabled, trigger_mode, auto_start));
+  return CreateBoolean(
+      env,
+      g_host && g_host->UpdateTray(enabled,
+                                   trigger_mode,
+                                   auto_start,
+                                   indicator_action,
+                                   icon_size,
+                                   dot_size,
+                                   icon_path,
+                                   custom_shortcut));
 }
 
 napi_value ShowIndicator(napi_env env, napi_callback_info info) {
-  size_t count = 5;
-  napi_value arguments[5]{};
+  size_t count = 7;
+  napi_value arguments[7]{};
   napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
 
   int x = INT_MIN;
   int y = INT_MIN;
   std::string style;
+  int size = 24;
+  std::string icon_path;
   bool hover_enabled = false;
   unsigned int hover_delay_ms = 450;
-  if (count != 5 || !GetInt32OrNull(env, arguments[0], &x) ||
+  if (count != 7 || !GetInt32OrNull(env, arguments[0], &x) ||
       !GetInt32OrNull(env, arguments[1], &y) || !GetUtf8(env, arguments[2], &style) ||
-      !GetBoolean(env, arguments[3], &hover_enabled) ||
-      !GetUint32(env, arguments[4], &hover_delay_ms)) {
+      !GetInt32OrNull(env, arguments[3], &size) ||
+      !GetUtf8(env, arguments[4], &icon_path) ||
+      !GetBoolean(env, arguments[5], &hover_enabled) ||
+      !GetUint32(env, arguments[6], &hover_delay_ms)) {
     ThrowLastError(env, "showIndicator received invalid arguments");
     return nullptr;
   }
 
   return CreateBoolean(
-      env, g_host && g_host->ShowIndicator(x, y, style, hover_enabled, hover_delay_ms));
+      env,
+      g_host &&
+          g_host->ShowIndicator(x, y, style, size, icon_path, hover_enabled, hover_delay_ms));
 }
 
 napi_value HideIndicator(napi_env env, napi_callback_info) {
   return CreateBoolean(env, g_host && g_host->HideIndicator());
+}
+
+napi_value RegisterShortcut(napi_env env, napi_callback_info info) {
+  size_t count = 1;
+  napi_value arguments[1]{};
+  napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
+
+  std::string shortcut;
+  if (count != 1 || !GetUtf8(env, arguments[0], &shortcut)) {
+    ThrowLastError(env, "registerShortcut(shortcut) requires a string");
+    return nullptr;
+  }
+
+  if (!g_host) {
+    Win32Host::ShortcutResult result;
+    result.error_code = ERROR_INVALID_WINDOW_HANDLE;
+    return CreateShortcutResult(env, result);
+  }
+  return CreateShortcutResult(env, g_host->RegisterShortcut(shortcut));
 }
 
 napi_value SetAutoStart(napi_env env, napi_callback_info info) {
@@ -200,6 +260,7 @@ napi_value Initialize(napi_env env, napi_value exports) {
       {"updateTray", nullptr, UpdateTray, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"showIndicator", nullptr, ShowIndicator, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"hideIndicator", nullptr, HideIndicator, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"registerShortcut", nullptr, RegisterShortcut, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"setAutoStart", nullptr, SetAutoStart, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
   napi_define_properties(env, exports, sizeof(properties) / sizeof(properties[0]), properties);

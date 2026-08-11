@@ -1,10 +1,11 @@
 {
   "targets": [
     {
-      "target_name": "selection_forward_win32",
+      "target_name": "selection_forward_win32_ui",
       "sources": [
         "src/addon.cc",
-        "src/win32_host.cc"
+        "src/win32_host.cc",
+        "resources.rc"
       ],
       "defines": [
         "NAPI_VERSION=8",
@@ -17,7 +18,8 @@
         "user32.lib",
         "shell32.lib",
         "gdi32.lib",
-        "advapi32.lib"
+        "advapi32.lib",
+        "comdlg32.lib"
       ],
       "msvs_settings": {
         "VCCLCompilerTool": {
