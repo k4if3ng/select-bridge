@@ -82,7 +82,7 @@ Idle
 
 ## 平台抽象
 
-`PlatformHost` 提供生命周期、状态同步、指示器、快捷键和开机启动等可选能力。`HeadlessHost` 不创建 UI、系统热键或启动项。平台实现加载失败时，应用回退到 headless。
+`PlatformHost` 提供生命周期、状态同步、指示器、系统协议打开、快捷键和开机启动等可选能力。Windows 托盘宿主直接调用系统协议处理 API，避免每次查询额外创建中间进程；`HeadlessHost` 使用通用命令回退，不创建 UI、系统热键或启动项。平台实现加载失败时，应用回退到 headless。
 
 具体平台的线程、系统 API、构建和发布方式放在对应平台文档中。Windows 见 [`WINDOWS.md`](WINDOWS.md)。
 

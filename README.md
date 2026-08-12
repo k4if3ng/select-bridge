@@ -49,7 +49,7 @@ pnpm build
 pnpm start
 ```
 
-这是默认、占用最低的运行方式，只启动 Node、`selection-hook` 和触发状态机。默认触发方式为 `immediate`，选择文字稳定 120ms 后立即发送到 Goldendict-ng。
+这是默认、占用最低的运行方式，只启动 Node、`selection-hook` 和触发状态机。默认触发方式为 `immediate`，选择文字稳定 60ms 后立即发送到 Goldendict-ng。
 
 也可以直接指定快捷键触发：
 
@@ -83,15 +83,14 @@ pnpm start:tray
 - 立即翻译；
 - 显示图标；
 - 显示小圆点；
-- 点击图标触发，或开启悬浮停留触发；
+- 图标/圆点的点击触发与悬浮触发二选一；
 - 图标和圆点尺寸预设；
-- 选择自定义 `.ico`，或恢复内置图标；
 - 按 Ctrl、Alt 或 Shift 触发；
 - 捕获并保存自定义组合快捷键；
 - 开机启动；
 - 退出。
 
-默认托盘图标、悬浮图标和 EXE 图标来自 [`resources/icon.ico`](resources/icon.ico)。自定义图标加载失败时会安全回退到该内置图标。
+托盘图标、悬浮图标和 EXE 图标统一来自 [`resources/icon.ico`](resources/icon.ico)。悬浮控件使用无阴影的 per-pixel alpha 分层窗口：图标模式绘制抗锯齿圆角、白色底板、2px 灰蓝边框和内缩留白；圆点模式只绘制抗锯齿蓝色圆点。
 
 自定义快捷键至少包含一个修饰键和一个普通键，例如 `Ctrl+Alt+G`。保存时使用 Win32 `RegisterHotKey` 实际注册；如果组合已被系统或其他程序占用，会立即显示冲突提示并保留原设置。
 
@@ -104,14 +103,14 @@ pnpm start:tray
     ↓
 归一化、来源过滤、长度保护
     ↓
-等待 120ms，确认选区稳定
+等待 60ms，确认选区稳定
     ↓
 ┌ immediate ───────────────→ 查询
 ├ ctrl / alt / shift ──────→ 等待修饰键
 ├ custom ──────────────────→ 等待已注册的全局组合快捷键
 └ icon / dot ──────────────→ 显示原生悬浮控件
-                                   ├ 点击
-                                   └ 悬浮达到延迟
+                                   ├ 点击触发
+                                   └ 悬浮达到延迟触发（二选一）
                                          ↓
                                        查询
 ```
@@ -131,17 +130,17 @@ pnpm start:tray
 
 | 字段 | 默认值 | 作用 |
 | --- | ---: | --- |
+| `schemaVersion` | `5` | 配置格式版本，用于一次性迁移默认值 |
 | `enabled` | `true` | 是否启用选词监听 |
 | `triggerMode` | `immediate` | `immediate/icon/dot/ctrl/alt/shift/custom` |
-| `indicatorAction` | `click` | `click` 或 `hover`；hover 模式仍可点击 |
+| `indicatorAction` | `click` | `click` 或 `hover`，两者互斥 |
 | `maxTextLength` | `200` | 最大选区字符数 |
 | `dedupeWindowMs` | `800` | 重复抑制时间 |
-| `selectionStableMs` | `120` | 选区稳定时间 |
+| `selectionStableMs` | `60` | 选区稳定时间 |
 | `indicatorTtlMs` | `3000` | 悬浮控件显示期限 |
-| `hoverDelayMs` | `450` | 悬浮触发延迟 |
-| `iconSize` | `24` | 图标边长，范围 12–64 px |
-| `dotSize` | `12` | 圆点直径，范围 6–32 px |
-| `iconPath` | 空 | 自定义 `.ico` 路径；空值使用内置图标 |
+| `hoverDelayMs` | `350` | 悬浮触发延迟 |
+| `iconSize` | `40` | 图标边长，可选 32/40/48/56/64 px |
+| `dotSize` | `16` | 圆点直径，可选 12/16/20/24/28 px |
 | `customShortcut` | `Ctrl+Alt+G` | Windows 全局组合快捷键 |
 | `autoStart` | `false` | 当前用户开机启动 |
 
@@ -156,7 +155,6 @@ pnpm start:tray
 | `SELECTION_FORWARD_HOVER_MS` | 悬浮触发延迟 |
 | `SELECTION_FORWARD_ICON_SIZE` | 图标边长 |
 | `SELECTION_FORWARD_DOT_SIZE` | 圆点直径 |
-| `SELECTION_FORWARD_ICON_PATH` | 自定义 `.ico` 路径 |
 | `SELECTION_FORWARD_SHORTCUT` | 自定义组合快捷键 |
 | `SELECTION_FORWARD_TRIGGER_MODE` | 触发模式 |
 | `SELECTION_FORWARD_NATIVE_PATH` | 自定义 `.node` 模块路径 |
@@ -191,31 +189,30 @@ pnpm check:native
 pnpm build:windows
 ```
 
-脚本会完成 TypeScript 构建、Win32 模块构建和 Node SEA 打包，输出到：
+脚本会依次完成 TypeScript、Win32 原生模块、Node SEA、Portable ZIP 和 Inno Setup 安装器构建，输出到：
 
 ```text
-release/windows-x64/
-├ SelectionForward.exe          # 主程序，默认 headless
-├ SelectionForwardTray.exe      # 无控制台的静默托盘启动器
-├ selection_forward_win32_ui.node
-└ node_modules/                 # selection-hook 的最小运行时文件
+release/
+├ SelectionForward-<version>-windows-x64-portable.zip
+└ SelectionForward-<version>-windows-x64-setup.exe
 ```
 
-使用方式：
+只生成 Portable ZIP、不要求本机安装 Inno Setup：
 
 ```powershell
-# 最低占用，无 GUI/托盘
-.\SelectionForward.exe
-
-# 托盘模式，同时保留控制台日志
-.\SelectionForward.exe --tray
-
-# 托盘模式，无控制台窗口；适合日常运行和开机自启
-.\SelectionForwardTray.exe
+pnpm build:windows:portable
 ```
 
-发布时需要复制整个 `release/windows-x64` 目录，不能只拿走主 EXE：`selection-hook` 和托盘层都是原生 Node-API 模块，需要作为同目录运行时文件加载。主 EXE 已内置 Node 24，无需用户另装 Node；托盘启动器启动主程序后立即退出，不增加常驻进程。
+只在已有基础运行目录时重新生成 Setup：
+
+```powershell
+pnpm build:windows:setup
+```
+
+完整 `build:windows` 需要 Inno Setup 6。Setup 默认安装到当前用户的 `%LOCALAPPDATA%\Programs\Selection Forward`，不要求管理员权限，并创建卸载项和开始菜单快捷方式。
+
+Portable ZIP 解压后包含 `SelectionForward.exe`、两个 `.node` 原生模块和 `portable.flag`。主 EXE 已内置 Node、应用代码和 `selection-hook` 的 JavaScript 层，最终用户无需安装 Node。Portable 的配置保存在解压目录的 `data/config.json`，因此整个目录可以移动；不能只移动 EXE。若移动前已启用开机启动，需要在移动后关闭并重新启用一次，因为启动项保存的是绝对路径。打包时优先使用 7-Zip 的最大 ZIP 压缩，未安装 7-Zip 时回退到系统 `tar.exe`。Setup 版不带 `portable.flag`，配置保存在 `%APPDATA%\selection-forward\config.json`。
 
 ## 当前阶段边界
 
-这一阶段已经完成核心状态机、托盘、可调悬浮控件、自定义快捷键冲突检测、应用图标、静默开机启动和便携 EXE 打包。当前仍是便携目录而不是安装器；单实例保护和图形化完整设置页可在后续阶段补充。
+这一阶段已经完成核心状态机、托盘、可调悬浮控件、自定义快捷键冲突检测、应用图标、静默开机启动、Portable ZIP 和 Setup 安装器。单实例保护、代码签名、自动更新和完整设置页可在后续阶段补充。
