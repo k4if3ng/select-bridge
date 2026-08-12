@@ -14,6 +14,9 @@ export class HeadlessHost implements PlatformHost {
   updateState(_state: PlatformState): void {}
   showIndicator(_options: IndicatorOptions): void {}
   hideIndicator(): void {}
+  openExternalUrl(_url: string): boolean {
+    return false;
+  }
 
   registerShortcut(_shortcut: string): ShortcutRegistrationResult {
     return { ok: false, errorCode: 0, normalized: '' };

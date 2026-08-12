@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -16,6 +17,7 @@ export type IndicatorAction = 'click' | 'hover';
 export type RuntimeMode = 'headless' | 'tray';
 
 export interface AppConfig {
+  schemaVersion: number;
   enabled: boolean;
   triggerMode: TriggerMode;
   indicatorAction: IndicatorAction;
@@ -26,7 +28,6 @@ export interface AppConfig {
   hoverDelayMs: number;
   iconSize: number;
   dotSize: number;
-  iconPath: string;
   customShortcut: string;
   autoStart: boolean;
 }
@@ -39,17 +40,17 @@ export interface RuntimeOptions {
 }
 
 export const DEFAULT_CONFIG: Readonly<AppConfig> = {
+  schemaVersion: 5,
   enabled: true,
   triggerMode: 'immediate',
   indicatorAction: 'click',
   maxTextLength: 200,
   dedupeWindowMs: 800,
-  selectionStableMs: 120,
+  selectionStableMs: 60,
   indicatorTtlMs: 3000,
-  hoverDelayMs: 450,
-  iconSize: 24,
-  dotSize: 12,
-  iconPath: '',
+  hoverDelayMs: 350,
+  iconSize: 40,
+  dotSize: 16,
   customShortcut: 'Ctrl+Alt+G',
   autoStart: false,
 };
@@ -87,7 +88,8 @@ export class ConfigStore {
 export function loadRuntimeOptions(argv: string[]): RuntimeOptions {
   const forceHeadless = argv.includes('--headless');
   const silent = argv.includes('--silent');
-  const wantsTray = argv.includes('--tray') || silent;
+  const packagedExecutable = process.env.SELECTION_FORWARD_PACKAGED === '1';
+  const wantsTray = argv.includes('--tray') || silent || packagedExecutable;
   const triggerValue = argv.find((argument) => argument.startsWith('--trigger='))?.slice('--trigger='.length);
   const customShortcut = argv
     .find((argument) => argument.startsWith('--shortcut='))
@@ -111,7 +113,9 @@ function sanitizeConfig(value: unknown): AppConfig {
     return { ...DEFAULT_CONFIG };
   }
 
+  const migrateDefaults = value.schemaVersion !== DEFAULT_CONFIG.schemaVersion;
   return {
+    schemaVersion: DEFAULT_CONFIG.schemaVersion,
     enabled: getBoolean(value.enabled, DEFAULT_CONFIG.enabled),
     triggerMode: isTriggerMode(value.triggerMode) ? value.triggerMode : DEFAULT_CONFIG.triggerMode,
     indicatorAction:
@@ -120,12 +124,19 @@ function sanitizeConfig(value: unknown): AppConfig {
         : DEFAULT_CONFIG.indicatorAction,
     maxTextLength: getPositiveInteger(value.maxTextLength, DEFAULT_CONFIG.maxTextLength),
     dedupeWindowMs: getPositiveInteger(value.dedupeWindowMs, DEFAULT_CONFIG.dedupeWindowMs),
-    selectionStableMs: getPositiveInteger(value.selectionStableMs, DEFAULT_CONFIG.selectionStableMs),
+    selectionStableMs: migrateDefaults
+      ? getMigratedTiming(value.selectionStableMs, 120, DEFAULT_CONFIG.selectionStableMs)
+      : getPositiveInteger(value.selectionStableMs, DEFAULT_CONFIG.selectionStableMs),
     indicatorTtlMs: getPositiveInteger(value.indicatorTtlMs, DEFAULT_CONFIG.indicatorTtlMs),
-    hoverDelayMs: getPositiveInteger(value.hoverDelayMs, DEFAULT_CONFIG.hoverDelayMs),
-    iconSize: getBoundedInteger(value.iconSize, DEFAULT_CONFIG.iconSize, 12, 64),
-    dotSize: getBoundedInteger(value.dotSize, DEFAULT_CONFIG.dotSize, 6, 32),
-    iconPath: typeof value.iconPath === 'string' ? value.iconPath : DEFAULT_CONFIG.iconPath,
+    hoverDelayMs: migrateDefaults
+      ? getMigratedTiming(value.hoverDelayMs, 450, DEFAULT_CONFIG.hoverDelayMs)
+      : getPositiveInteger(value.hoverDelayMs, DEFAULT_CONFIG.hoverDelayMs),
+    iconSize: migrateDefaults
+      ? getMigratedBoundedInteger(value.iconSize, 24, DEFAULT_CONFIG.iconSize, 32, 64)
+      : getBoundedInteger(value.iconSize, DEFAULT_CONFIG.iconSize, 32, 64),
+    dotSize: migrateDefaults
+      ? getMigratedBoundedInteger(value.dotSize, 24, DEFAULT_CONFIG.dotSize, 12, 28)
+      : getBoundedInteger(value.dotSize, DEFAULT_CONFIG.dotSize, 12, 28),
     customShortcut:
       typeof value.customShortcut === 'string' && value.customShortcut.trim()
         ? value.customShortcut.trim()
@@ -160,16 +171,15 @@ function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
     iconSize: getBoundedEnvironmentInteger(
       'SELECTION_FORWARD_ICON_SIZE',
       config.iconSize,
-      12,
+      32,
       64,
     ),
     dotSize: getBoundedEnvironmentInteger(
       'SELECTION_FORWARD_DOT_SIZE',
       config.dotSize,
-      6,
-      32,
+      12,
+      28,
     ),
-    iconPath: process.env.SELECTION_FORWARD_ICON_PATH ?? config.iconPath,
     customShortcut:
       process.env.SELECTION_FORWARD_SHORTCUT?.trim() || config.customShortcut,
     triggerMode: isTriggerMode(process.env.SELECTION_FORWARD_TRIGGER_MODE)
@@ -181,6 +191,13 @@ function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
 function resolveConfigPath(): string {
   if (process.env.SELECTION_FORWARD_CONFIG) {
     return process.env.SELECTION_FORWARD_CONFIG;
+  }
+
+  if (process.platform === 'win32' && process.env.SELECTION_FORWARD_PACKAGED === '1') {
+    const executableDirectory = dirname(process.execPath);
+    if (existsSync(join(executableDirectory, 'portable.flag'))) {
+      return join(executableDirectory, 'data', 'config.json');
+    }
   }
 
   const baseDirectory =
@@ -211,6 +228,25 @@ function getBoundedEnvironmentInteger(
 
 function getPositiveInteger(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
+function getMigratedTiming(value: unknown, previousDefault: number, currentDefault: number): number {
+  return value === previousDefault ? currentDefault : getPositiveInteger(value, currentDefault);
+}
+
+function getMigratedBoundedInteger(
+  value: unknown,
+  previousDefault: number,
+  currentDefault: number,
+  minimum: number,
+  maximum: number,
+): number {
+  return getBoundedInteger(
+    value === previousDefault ? currentDefault : value,
+    currentDefault,
+    minimum,
+    maximum,
+  );
 }
 
 function getBoundedInteger(

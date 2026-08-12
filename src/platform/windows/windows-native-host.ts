@@ -21,7 +21,6 @@ interface NativeAddon {
     indicatorAction: string,
     iconSize: number,
     dotSize: number,
-    iconPath: string,
     customShortcut: string,
   ): void;
   showIndicator(
@@ -29,11 +28,11 @@ interface NativeAddon {
     y: number | null,
     style: string,
     size: number,
-    iconPath: string,
     hoverEnabled: boolean,
     hoverDelayMs: number,
   ): void;
   hideIndicator(): void;
+  openExternalUrl(url: string): boolean;
   registerShortcut(shortcut: string): ShortcutRegistrationResult;
   setAutoStart(enabled: boolean, executablePath: string, argumentsText: string): boolean;
 }
@@ -75,7 +74,6 @@ export class WindowsNativeHost implements PlatformHost {
       state.indicatorAction,
       state.iconSize,
       state.dotSize,
-      state.iconPath,
       state.customShortcut,
     );
   }
@@ -86,7 +84,6 @@ export class WindowsNativeHost implements PlatformHost {
       options.y ?? null,
       options.style,
       options.size,
-      options.iconPath,
       options.hoverEnabled,
       options.hoverDelayMs,
     );
@@ -96,6 +93,10 @@ export class WindowsNativeHost implements PlatformHost {
     this.addon.hideIndicator();
   }
 
+  openExternalUrl(url: string): boolean {
+    return this.addon.openExternalUrl(url);
+  }
+
   registerShortcut(shortcut: string): ShortcutRegistrationResult {
     return this.addon.registerShortcut(shortcut);
   }
@@ -103,16 +104,8 @@ export class WindowsNativeHost implements PlatformHost {
   async setAutoStart(enabled: boolean): Promise<boolean> {
     const scriptArgument = process.argv[1] ?? '';
     const scriptPath = /\.(?:c|m)?js$/i.test(scriptArgument) ? resolve(scriptArgument) : '';
-    const packagedTrayLauncher = resolve(dirname(process.execPath), 'SelectionForwardTray.exe');
-    const executablePath = !scriptPath && existsSync(packagedTrayLauncher)
-      ? packagedTrayLauncher
-      : process.execPath;
-    const argumentsText = scriptPath
-      ? `"${scriptPath}" --silent`
-      : executablePath === process.execPath
-        ? '--silent'
-        : '';
-    return this.addon.setAutoStart(enabled, executablePath, argumentsText);
+    const argumentsText = scriptPath ? `"${scriptPath}" --silent` : '--silent';
+    return this.addon.setAutoStart(enabled, process.execPath, argumentsText);
   }
 }
 
@@ -138,17 +131,17 @@ function toPlatformEvent(type: string, value?: string): PlatformEvent | undefine
     case 'indicator-hover':
     case 'toggle-enabled':
     case 'toggle-auto-start':
-    case 'toggle-hover':
     case 'shortcut':
     case 'open-settings':
     case 'exit':
       return { type };
     case 'set-trigger-mode':
+    case 'set-indicator-action':
     case 'set-icon-size':
     case 'set-dot-size':
-    case 'set-icon-path':
     case 'set-custom-shortcut':
     case 'shortcut-conflict':
+    case 'native-error':
       return { type, value: value ?? '' };
     default:
       console.warn(`[platform] 未知原生事件：${type}`);

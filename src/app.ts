@@ -21,7 +21,7 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
     console.warn(`[platform] headless 不显示 ${config.triggerMode}，本次运行改用 immediate。`);
     config = { ...config, triggerMode: 'immediate' };
   }
-  const target = new GoldenDictTarget();
+  const target = new GoldenDictTarget((url) => platform.openExternalUrl(url));
 
   let hook: SelectionHookAdapter | undefined;
   let shuttingDown = false;
@@ -161,7 +161,6 @@ function toPlatformState(config: AppConfig): Parameters<PlatformHost['updateStat
     indicatorAction: config.indicatorAction,
     iconSize: config.iconSize,
     dotSize: config.dotSize,
-    iconPath: config.iconPath,
     customShortcut: config.customShortcut,
   };
 }

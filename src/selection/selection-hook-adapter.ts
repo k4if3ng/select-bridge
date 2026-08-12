@@ -1,16 +1,17 @@
-import { createRequire } from 'node:module';
-
+import * as SelectionHookModule from 'selection-hook';
 import type {
   KeyboardEventData,
   SelectionHookConstructor,
   SelectionHookInstance,
   TextSelectionData,
 } from 'selection-hook';
+import type {
+  KeyEvent,
+  SelectionEvent,
+} from './types.js';
 
-import type { KeyEvent, SelectionEvent } from './types.js';
-
-const require = createRequire(import.meta.url);
-const SelectionHook = require('selection-hook') as SelectionHookConstructor;
+const SelectionHook = (SelectionHookModule.default ??
+  SelectionHookModule) as unknown as SelectionHookConstructor;
 
 export interface SelectionHookCallbacks {
   onSelection(event: SelectionEvent): void;

@@ -78,7 +78,9 @@ export class TriggerController {
   handlePlatformEvent(event: PlatformEvent): void {
     switch (event.type) {
       case 'indicator-click':
-        this.triggerCandidate('click');
+        if (this.config.indicatorAction === 'click') {
+          this.triggerCandidate('click');
+        }
         return;
       case 'indicator-hover':
         if (this.config.indicatorAction === 'hover') {
@@ -93,6 +95,9 @@ export class TriggerController {
       case 'shortcut-conflict':
         console.error(`[shortcut] 快捷键注册冲突：${event.value}`);
         return;
+      case 'native-error':
+        console.error(`[platform] 原生窗口错误：${event.value}`);
+        return;
       case 'toggle-enabled':
         this.replaceConfig({ ...this.config, enabled: !this.config.enabled });
         return;
@@ -101,26 +106,22 @@ export class TriggerController {
           this.replaceConfig({ ...this.config, triggerMode: event.value });
         }
         return;
-      case 'toggle-hover':
-        this.replaceConfig({
-          ...this.config,
-          indicatorAction: this.config.indicatorAction === 'hover' ? 'click' : 'hover',
-        });
+      case 'set-indicator-action':
+        if (event.value === 'click' || event.value === 'hover') {
+          this.replaceConfig({ ...this.config, indicatorAction: event.value });
+        }
         return;
       case 'set-icon-size':
         this.replaceConfig({
           ...this.config,
-          iconSize: clampInteger(event.value, this.config.iconSize, 12, 64),
+          iconSize: clampInteger(event.value, this.config.iconSize, 32, 64),
         });
         return;
       case 'set-dot-size':
         this.replaceConfig({
           ...this.config,
-          dotSize: clampInteger(event.value, this.config.dotSize, 6, 32),
+          dotSize: clampInteger(event.value, this.config.dotSize, 12, 28),
         });
-        return;
-      case 'set-icon-path':
-        this.replaceConfig({ ...this.config, iconPath: event.value });
         return;
       case 'set-custom-shortcut':
         this.replaceConfig({ ...this.config, customShortcut: event.value });
@@ -145,7 +146,6 @@ export class TriggerController {
       indicatorAction: config.indicatorAction,
       iconSize: config.iconSize,
       dotSize: config.dotSize,
-      iconPath: config.iconPath,
       customShortcut: config.customShortcut,
     });
     this.options.onConfigChange(config);
@@ -176,7 +176,6 @@ export class TriggerController {
         style: this.config.triggerMode,
         size:
           this.config.triggerMode === 'dot' ? this.config.dotSize : this.config.iconSize,
-        iconPath: this.config.iconPath,
         hoverEnabled: this.config.indicatorAction === 'hover',
         hoverDelayMs: this.config.hoverDelayMs,
       });

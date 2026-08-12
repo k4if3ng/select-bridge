@@ -6,7 +6,13 @@ export class GoldenDictTarget implements TranslationTarget {
   readonly id = 'goldendict-ng';
   readonly name = 'Goldendict-ng';
 
+  constructor(private readonly nativeOpenExternalUrl?: (url: string) => boolean) {}
+
   async translate(text: string): Promise<void> {
-    await openExternalUrl(`goldendict://${encodeURIComponent(text)}?target=popup`);
+    const url = `goldendict://${encodeURIComponent(text)}?target=popup`;
+    if (this.nativeOpenExternalUrl?.(url)) {
+      return;
+    }
+    await openExternalUrl(url);
   }
 }
