@@ -7,6 +7,8 @@
     "build": "tsc -p tsconfig.json",
     "build:native": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-native.ps1",
     "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
+    "build:windows:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -SkipSetup",
+    "build:windows:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-setup.ps1",
     "check:native": "node scripts/check-native.cjs",
     "start": "tsc -p tsconfig.json && node dist/index.js --headless",
     "start:tray": "tsc -p tsconfig.json && node dist/index.js --tray"

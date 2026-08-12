@@ -1,4 +1,4 @@
-import { cp, copyFile, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,12 +11,21 @@ const { inject } = require('postject');
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const intermediateDirectory = join(projectRoot, 'build', 'windows');
-const releaseDirectory = join(projectRoot, 'release', 'windows-x64');
+const appDirectory = join(intermediateDirectory, 'app');
+const portableRoot = join(intermediateDirectory, 'portable');
+const portableDirectory = join(portableRoot, 'SelectionForward');
+const releaseDirectory = join(projectRoot, 'release');
 const bundledEntry = join(intermediateDirectory, 'main.cjs');
 const seaBlob = join(intermediateDirectory, 'sea-prep.blob');
 const seaConfig = join(intermediateDirectory, 'sea-config.json');
-const executablePath = join(releaseDirectory, 'SelectionForward.exe');
+const executablePath = join(appDirectory, 'SelectionForward.exe');
 const iconPath = join(projectRoot, 'resources', 'icon.ico');
+const packageJson = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'));
+const version = packageJson.version;
+const portableArchive = join(
+  releaseDirectory,
+  `SelectionForward-${version}-windows-x64-portable.zip`,
+);
 const nativeAddonPath = join(
   projectRoot,
   'native',
@@ -25,15 +34,14 @@ const nativeAddonPath = join(
   'Release',
   'selection_forward_win32_ui.node',
 );
-const trayLauncherPath = join(
+const selectionHookNativePath = join(
   projectRoot,
-  'native',
-  'win32',
-  'build',
-  'Release',
-  'selection_forward_tray_launcher.exe',
+  'node_modules',
+  'selection-hook',
+  'prebuilds',
+  'win32-x64',
+  'selection-hook.node',
 );
-
 if (process.platform !== 'win32') {
   throw new Error('Windows SEA package must be built on Windows.');
 }
@@ -42,9 +50,9 @@ if (Number.parseInt(process.versions.node.split('.')[0] ?? '0', 10) < 24) {
 }
 
 await rm(intermediateDirectory, { recursive: true, force: true });
-await rm(releaseDirectory, { recursive: true, force: true });
-await mkdir(intermediateDirectory, { recursive: true });
+await mkdir(appDirectory, { recursive: true });
 await mkdir(releaseDirectory, { recursive: true });
+await rm(portableArchive, { force: true });
 
 await build({
   entryPoints: [join(projectRoot, 'src', 'index.ts')],
@@ -55,9 +63,12 @@ await build({
   target: 'node24',
   sourcemap: false,
   minify: true,
-  packages: 'external',
+  alias: {
+    'node-gyp-build': join(projectRoot, 'scripts', 'selection-hook-native-loader.cjs'),
+  },
   define: {
     'import.meta.url': '__filename',
+    'process.env.SELECTION_FORWARD_PACKAGED': '"1"',
   },
   banner: { js: '// Selection Forward — bundled for Node.js SEA' },
 });
@@ -94,8 +105,8 @@ if (seaResult.status !== 0) {
 await copyFile(process.execPath, executablePath);
 await rcedit(executablePath, {
   icon: iconPath,
-  'file-version': '1.0.0',
-  'product-version': '1.0.0',
+  'file-version': version,
+  'product-version': version,
   'version-string': {
     FileDescription: 'Selection Forward',
     InternalName: 'SelectionForward',
@@ -106,56 +117,51 @@ await rcedit(executablePath, {
 await inject(executablePath, 'NODE_SEA_BLOB', await readFile(seaBlob), {
   sentinelFuse: 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2',
 });
+await setWindowsSubsystem(executablePath, 2);
 
-await copyFile(nativeAddonPath, join(releaseDirectory, 'selection_forward_win32_ui.node'));
-const packagedTrayLauncher = join(releaseDirectory, 'SelectionForwardTray.exe');
-await copyFile(trayLauncherPath, packagedTrayLauncher);
-await rcedit(packagedTrayLauncher, {
-  icon: iconPath,
-  'file-version': '1.0.0',
-  'product-version': '1.0.0',
-  'version-string': {
-    FileDescription: 'Selection Forward Tray Launcher',
-    InternalName: 'SelectionForwardTray',
-    OriginalFilename: 'SelectionForwardTray.exe',
-    ProductName: 'Selection Forward',
-  },
-});
-await setWindowsSubsystem(packagedTrayLauncher, 2);
-await copyFile(iconPath, join(releaseDirectory, 'icon.ico'));
+await copyFile(nativeAddonPath, join(appDirectory, 'selection_forward_win32_ui.node'));
+await copyFile(selectionHookNativePath, join(appDirectory, 'selection-hook.node'));
 
-const selectionHookEntry = require.resolve('selection-hook');
-await copyRuntimePackage('selection-hook', selectionHookEntry, [
-  'index.js',
-  'package.json',
-  'LICENSE',
-  'README.md',
-  join('prebuilds', 'win32-x64'),
-]);
-const selectionHookRequire = createRequire(selectionHookEntry);
-await copyRuntimePackage('node-gyp-build', selectionHookRequire.resolve('node-gyp-build'), [
-  'index.js',
-  'node-gyp-build.js',
-  'package.json',
-  'LICENSE',
-  'README.md',
-]);
+await mkdir(portableDirectory, { recursive: true });
+for (const fileName of [
+  'SelectionForward.exe',
+  'selection-hook.node',
+  'selection_forward_win32_ui.node',
+]) {
+  await copyFile(join(appDirectory, fileName), join(portableDirectory, fileName));
+}
+await writeFile(join(portableDirectory, 'portable.flag'), '', 'utf8');
 
-console.log(`Windows package created: ${releaseDirectory}`);
+const portableResult = createPortableArchive(portableArchive, portableRoot);
+if (portableResult.status !== 0) {
+  throw new Error(`Portable ZIP creation failed with exit code ${portableResult.status}.`);
+}
 
-async function copyRuntimePackage(packageName, packageEntry, entries) {
-  const sourceDirectory = await realpath(dirname(packageEntry));
-  const destinationDirectory = join(releaseDirectory, 'node_modules', packageName);
-  await mkdir(destinationDirectory, { recursive: true });
+console.log(`Windows app staging created: ${appDirectory}`);
+console.log(`Portable archive created: ${portableArchive}`);
 
-  for (const entry of entries) {
-    const destination = join(destinationDirectory, entry);
-    await mkdir(dirname(destination), { recursive: true });
-    await cp(join(sourceDirectory, entry), destination, {
-      recursive: true,
-      force: true,
-    });
+function createPortableArchive(archivePath, sourceRoot) {
+  const sevenZip = spawnSync(
+    '7z.exe',
+    ['a', '-tzip', '-mx=9', '-mmt=on', archivePath, 'SelectionForward'],
+    { cwd: sourceRoot, encoding: 'utf8', stdio: 'inherit' },
+  );
+  if (!sevenZip.error) {
+    return sevenZip;
   }
+  if (sevenZip.error.code !== 'ENOENT') {
+    throw sevenZip.error;
+  }
+
+  const tar = spawnSync(
+    'tar.exe',
+    ['-a', '-c', '-f', archivePath, '-C', sourceRoot, 'SelectionForward'],
+    { cwd: projectRoot, encoding: 'utf8', stdio: 'inherit' },
+  );
+  if (tar.error) {
+    throw tar.error;
+  }
+  return tar;
 }
 
 async function setWindowsSubsystem(executable, subsystem) {
