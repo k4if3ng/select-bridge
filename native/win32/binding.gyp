@@ -18,30 +18,7 @@
         "user32.lib",
         "shell32.lib",
         "gdi32.lib",
-        "advapi32.lib",
-        "comdlg32.lib"
-      ],
-      "msvs_settings": {
-        "VCCLCompilerTool": {
-          "AdditionalOptions": ["/std:c++20", "/EHsc"]
-        }
-      }
-    },
-    {
-      "target_name": "selection_forward_tray_launcher",
-      "type": "executable",
-      "sources": [
-        "src/tray_launcher.cc",
-        "resources.rc"
-      ],
-      "defines": [
-        "UNICODE",
-        "_UNICODE",
-        "WIN32_LEAN_AND_MEAN",
-        "NOMINMAX"
-      ],
-      "libraries": [
-        "user32.lib"
+        "advapi32.lib"
       ],
       "msvs_settings": {
         "VCCLCompilerTool": {

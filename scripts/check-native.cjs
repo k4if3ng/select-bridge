@@ -2,6 +2,7 @@ const addon = require('../native/win32/build/Release/selection_forward_win32_ui.
 
 const expectedExports = [
   'hideIndicator',
+  'openExternalUrl',
   'registerShortcut',
   'setAutoStart',
   'showIndicator',

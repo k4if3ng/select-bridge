@@ -10,12 +10,7 @@ if (-not $pythonPath) {
 }
 
 $env:npm_config_python = $pythonPath
-pnpm exec node-gyp configure --directory native/win32
-if ($LASTEXITCODE -ne 0) {
-  exit $LASTEXITCODE
-}
-
-pnpm exec node-gyp build --directory native/win32
+pnpm exec node-gyp rebuild --directory native/win32
 if ($LASTEXITCODE -ne 0) {
   exit $LASTEXITCODE
 }

@@ -1,11 +1,12 @@
 #include "win32_host.h"
 #include "../resource.h"
 
-#include <commdlg.h>
 #include <shellapi.h>
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstdint>
 #include <memory>
 #include <sstream>
 #include <utility>
@@ -40,25 +41,100 @@ constexpr UINT kCommandAlt = 1104;
 constexpr UINT kCommandShift = 1105;
 constexpr UINT kCommandCustom = 1106;
 constexpr UINT kCommandToggleAutoStart = 1200;
-constexpr UINT kCommandToggleHover = 1201;
+constexpr UINT kCommandIndicatorClick = 1201;
+constexpr UINT kCommandIndicatorHover = 1202;
 constexpr UINT kCommandSetShortcut = 1300;
-constexpr UINT kCommandChooseIcon = 1301;
-constexpr UINT kCommandDefaultIcon = 1302;
 constexpr UINT kCommandExit = 1400;
-constexpr UINT kCommandIconSize16 = 1500;
-constexpr UINT kCommandIconSize20 = 1501;
-constexpr UINT kCommandIconSize24 = 1502;
-constexpr UINT kCommandIconSize32 = 1503;
-constexpr UINT kCommandIconSize40 = 1504;
-constexpr UINT kCommandDotSize8 = 1510;
-constexpr UINT kCommandDotSize12 = 1511;
-constexpr UINT kCommandDotSize16 = 1512;
-constexpr UINT kCommandDotSize20 = 1513;
-constexpr UINT kCommandDotSize24 = 1514;
+constexpr UINT kCommandIconSize32 = 1500;
+constexpr UINT kCommandIconSize40 = 1501;
+constexpr UINT kCommandIconSize48 = 1502;
+constexpr UINT kCommandIconSize56 = 1503;
+constexpr UINT kCommandIconSize64 = 1504;
+constexpr UINT kCommandDotSize12 = 1510;
+constexpr UINT kCommandDotSize16 = 1511;
+constexpr UINT kCommandDotSize20 = 1512;
+constexpr UINT kCommandDotSize24 = 1513;
+constexpr UINT kCommandDotSize28 = 1514;
 constexpr UINT kShortcutSaveButton = 1600;
 constexpr UINT kShortcutCancelButton = 1601;
 
 constexpr COLORREF kIndicatorColor = RGB(31, 111, 235);
+constexpr COLORREF kIndicatorBackgroundColor = RGB(255, 255, 255);
+constexpr COLORREF kIndicatorBorderColor = RGB(156, 169, 186);
+
+bool IsInsideRoundedRectangle(double x,
+                              double y,
+                              double left,
+                              double top,
+                              double right,
+                              double bottom,
+                              double radius) {
+  if (x < left || x >= right || y < top || y >= bottom) {
+    return false;
+  }
+  const double closest_x = std::clamp(x, left + radius, right - radius);
+  const double closest_y = std::clamp(y, top + radius, bottom - radius);
+  const double dx = x - closest_x;
+  const double dy = y - closest_y;
+  return dx * dx + dy * dy <= radius * radius;
+}
+
+double RoundedRectangleCoverage(int pixel_x,
+                                int pixel_y,
+                                double left,
+                                double top,
+                                double right,
+                                double bottom,
+                                double radius) {
+  constexpr int kSamplesPerAxis = 4;
+  int covered = 0;
+  for (int sample_y = 0; sample_y < kSamplesPerAxis; ++sample_y) {
+    for (int sample_x = 0; sample_x < kSamplesPerAxis; ++sample_x) {
+      const double x = pixel_x + (sample_x + 0.5) / kSamplesPerAxis;
+      const double y = pixel_y + (sample_y + 0.5) / kSamplesPerAxis;
+      if (IsInsideRoundedRectangle(x, y, left, top, right, bottom, radius)) {
+        ++covered;
+      }
+    }
+  }
+  return static_cast<double>(covered) / (kSamplesPerAxis * kSamplesPerAxis);
+}
+
+double CircleCoverage(int pixel_x, int pixel_y, double center, double radius) {
+  constexpr int kSamplesPerAxis = 4;
+  int covered = 0;
+  for (int sample_y = 0; sample_y < kSamplesPerAxis; ++sample_y) {
+    for (int sample_x = 0; sample_x < kSamplesPerAxis; ++sample_x) {
+      const double x = pixel_x + (sample_x + 0.5) / kSamplesPerAxis - center;
+      const double y = pixel_y + (sample_y + 0.5) / kSamplesPerAxis - center;
+      if (x * x + y * y <= radius * radius) {
+        ++covered;
+      }
+    }
+  }
+  return static_cast<double>(covered) / (kSamplesPerAxis * kSamplesPerAxis);
+}
+
+struct BgraPixel {
+  std::uint8_t blue;
+  std::uint8_t green;
+  std::uint8_t red;
+  std::uint8_t alpha;
+};
+
+void SetPremultipliedPixel(BgraPixel* pixel,
+                           COLORREF color,
+                           double color_coverage,
+                           double alpha_coverage) {
+  pixel->red = static_cast<std::uint8_t>(
+      std::lround(GetRValue(color) * std::clamp(color_coverage, 0.0, 1.0)));
+  pixel->green = static_cast<std::uint8_t>(
+      std::lround(GetGValue(color) * std::clamp(color_coverage, 0.0, 1.0)));
+  pixel->blue = static_cast<std::uint8_t>(
+      std::lround(GetBValue(color) * std::clamp(color_coverage, 0.0, 1.0)));
+  pixel->alpha = static_cast<std::uint8_t>(
+      std::lround(255.0 * std::clamp(alpha_coverage, 0.0, 1.0)));
+}
 
 Win32Host* GetHost(HWND window) {
   return reinterpret_cast<Win32Host*>(GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -240,20 +316,48 @@ std::wstring Utf8ToWideLocal(const std::string& value) {
   return result;
 }
 
-std::string WideToUtf8(const std::wstring& value) {
-  if (value.empty()) return {};
-  const int size = WideCharToMultiByte(
-      CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
-  std::string result(size, '\0');
-  WideCharToMultiByte(CP_UTF8,
-                      0,
-                      value.data(),
-                      static_cast<int>(value.size()),
-                      result.data(),
-                      size,
-                      nullptr,
-                      nullptr);
-  return result;
+UINT GetWindowDpiCompat(HWND window) {
+  using GetDpiForWindowFunction = UINT(WINAPI*)(HWND);
+  auto* function = reinterpret_cast<GetDpiForWindowFunction>(
+      GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow"));
+  return function ? function(window) : 96U;
+}
+
+int ScaleForDpi(int value, UINT dpi) {
+  return MulDiv(value, static_cast<int>(dpi), 96);
+}
+
+void ResizeAndCenterWindow(HWND window,
+                           int client_width,
+                           int client_height,
+                           DWORD style,
+                           DWORD extended_style,
+                           UINT dpi) {
+  RECT bounds{0, 0, ScaleForDpi(client_width, dpi), ScaleForDpi(client_height, dpi)};
+  using AdjustWindowRectExForDpiFunction = BOOL(WINAPI*)(LPRECT, DWORD, BOOL, DWORD, UINT);
+  auto* adjust_for_dpi = reinterpret_cast<AdjustWindowRectExForDpiFunction>(
+      GetProcAddress(GetModuleHandleW(L"user32.dll"), "AdjustWindowRectExForDpi"));
+  if (adjust_for_dpi) {
+    adjust_for_dpi(&bounds, style, FALSE, extended_style, dpi);
+  } else {
+    AdjustWindowRectEx(&bounds, style, FALSE, extended_style);
+  }
+
+  const int width = bounds.right - bounds.left;
+  const int height = bounds.bottom - bounds.top;
+  HMONITOR monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+  MONITORINFO monitor_info{};
+  monitor_info.cbSize = sizeof(monitor_info);
+  int x = CW_USEDEFAULT;
+  int y = CW_USEDEFAULT;
+  UINT position_flags = SWP_NOACTIVATE | SWP_NOZORDER;
+  if (GetMonitorInfoW(monitor, &monitor_info)) {
+    x = monitor_info.rcWork.left + (monitor_info.rcWork.right - monitor_info.rcWork.left - width) / 2;
+    y = monitor_info.rcWork.top + (monitor_info.rcWork.bottom - monitor_info.rcWork.top - height) / 2;
+  } else {
+    position_flags |= SWP_NOMOVE;
+  }
+  SetWindowPos(window, nullptr, x, y, width, height, position_flags);
 }
 
 }  // namespace
@@ -263,7 +367,6 @@ struct Win32Host::IndicatorRequest {
   int y;
   std::string style;
   int size;
-  std::string icon_path;
   bool hover_enabled;
   unsigned int hover_delay_ms;
 };
@@ -275,7 +378,6 @@ struct Win32Host::TrayStateRequest {
   std::string indicator_action;
   int icon_size;
   int dot_size;
-  std::string icon_path;
   std::string custom_shortcut;
 };
 
@@ -384,7 +486,6 @@ bool Win32Host::UpdateTray(bool enabled,
                            const std::string& indicator_action,
                            int icon_size,
                            int dot_size,
-                           const std::string& icon_path,
                            const std::string& custom_shortcut) {
   if (!owner_window_ || stopping_) {
     return false;
@@ -395,9 +496,8 @@ bool Win32Host::UpdateTray(bool enabled,
   request->trigger_mode = trigger_mode;
   request->auto_start = auto_start;
   request->indicator_action = indicator_action;
-  request->icon_size = std::clamp(icon_size, 12, 64);
-  request->dot_size = std::clamp(dot_size, 6, 32);
-  request->icon_path = icon_path;
+  request->icon_size = std::clamp(icon_size, 32, 64);
+  request->dot_size = std::clamp(dot_size, 12, 28);
   request->custom_shortcut = custom_shortcut;
   if (!PostMessageW(owner_window_, kUpdateTrayMessage, 0, reinterpret_cast<LPARAM>(request.get()))) {
     return false;
@@ -410,7 +510,6 @@ bool Win32Host::ShowIndicator(int x,
                               int y,
                               const std::string& style,
                               int size,
-                              const std::string& icon_path,
                               bool hover_enabled,
                               unsigned int hover_delay_ms) {
   if (!owner_window_ || stopping_) {
@@ -421,8 +520,7 @@ bool Win32Host::ShowIndicator(int x,
   request->x = x;
   request->y = y;
   request->style = style;
-  request->size = std::clamp(size, 6, 64);
-  request->icon_path = icon_path;
+  request->size = std::clamp(size, 12, 64);
   request->hover_enabled = hover_enabled;
   request->hover_delay_ms = std::max(100U, hover_delay_ms);
   if (!PostMessageW(owner_window_, kShowIndicatorMessage, 0, reinterpret_cast<LPARAM>(request.get()))) {
@@ -489,6 +587,15 @@ bool Win32Host::SetAutoStart(bool enabled,
 
   RegCloseKey(key);
   return result == ERROR_SUCCESS;
+}
+
+bool Win32Host::OpenExternalUrl(const std::wstring& url) {
+  if (url.empty()) {
+    return false;
+  }
+  const HINSTANCE result = ShellExecuteW(
+      nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+  return reinterpret_cast<INT_PTR>(result) > 32;
 }
 
 DWORD WINAPI Win32Host::ThreadEntry(void* parameter) {
@@ -586,7 +693,8 @@ bool Win32Host::CreateWindows() {
     return false;
   }
 
-  indicator_window_ = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE,
+  indicator_window_ = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE |
+                                          WS_EX_LAYERED,
                                       kIndicatorClassName,
                                       L"",
                                       WS_POPUP,
@@ -646,11 +754,14 @@ void Win32Host::RemoveTrayIcon() {
 void Win32Host::ShowTrayMenu() {
   HMENU menu = CreatePopupMenu();
   HMENU trigger_menu = CreatePopupMenu();
+  HMENU indicator_action_menu = CreatePopupMenu();
   HMENU icon_size_menu = CreatePopupMenu();
   HMENU dot_size_menu = CreatePopupMenu();
-  if (!menu || !trigger_menu || !icon_size_menu || !dot_size_menu) {
+  if (!menu || !trigger_menu || !indicator_action_menu || !icon_size_menu ||
+      !dot_size_menu) {
     if (dot_size_menu) DestroyMenu(dot_size_menu);
     if (icon_size_menu) DestroyMenu(icon_size_menu);
+    if (indicator_action_menu) DestroyMenu(indicator_action_menu);
     if (trigger_menu) DestroyMenu(trigger_menu);
     if (menu) DestroyMenu(menu);
     return;
@@ -662,9 +773,10 @@ void Win32Host::ShowTrayMenu() {
               L"启用划词翻译");
   AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 
-  AppendMenuW(trigger_menu, MF_STRING, kCommandImmediate, L"立即翻译");
+  AppendMenuW(trigger_menu, MF_STRING, kCommandImmediate, L"立即触发");
+  AppendMenuW(trigger_menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(trigger_menu, MF_STRING, kCommandIcon, L"显示图标");
-  AppendMenuW(trigger_menu, MF_STRING, kCommandDot, L"显示小圆点");
+  AppendMenuW(trigger_menu, MF_STRING, kCommandDot, L"显示圆点");
   AppendMenuW(trigger_menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(trigger_menu, MF_STRING, kCommandCtrl, L"按 Ctrl 触发");
   AppendMenuW(trigger_menu, MF_STRING, kCommandAlt, L"按 Alt 触发");
@@ -689,24 +801,33 @@ void Win32Host::ShowTrayMenu() {
               reinterpret_cast<UINT_PTR>(trigger_menu),
               L"触发方式");
 
+  AppendMenuW(indicator_action_menu, MF_STRING, kCommandIndicatorClick, L"点击触发");
+  AppendMenuW(indicator_action_menu, MF_STRING, kCommandIndicatorHover, L"悬浮触发");
+  CheckMenuRadioItem(indicator_action_menu,
+                     kCommandIndicatorClick,
+                     kCommandIndicatorHover,
+                     indicator_action_ == "hover" ? kCommandIndicatorHover
+                                                  : kCommandIndicatorClick,
+                     MF_BYCOMMAND);
+  const bool indicator_mode = trigger_mode_ == "icon" || trigger_mode_ == "dot";
   AppendMenuW(menu,
-              MF_STRING | (indicator_action_ == "hover" ? MF_CHECKED : MF_UNCHECKED),
-              kCommandToggleHover,
-              L"悬浮时触发（点击始终可用）");
+              MF_POPUP | (indicator_mode ? MF_ENABLED : MF_GRAYED),
+              reinterpret_cast<UINT_PTR>(indicator_action_menu),
+              L"图标/圆点触发方式");
 
-  AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize16, L"16 px");
-  AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize20, L"20 px");
-  AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize24, L"24 px");
   AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize32, L"32 px");
   AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize40, L"40 px");
-  const UINT checked_icon_size = icon_size_ <= 16   ? kCommandIconSize16
-                                 : icon_size_ <= 20 ? kCommandIconSize20
-                                 : icon_size_ <= 24 ? kCommandIconSize24
-                                 : icon_size_ <= 32 ? kCommandIconSize32
-                                                    : kCommandIconSize40;
+  AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize48, L"48 px");
+  AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize56, L"56 px");
+  AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize64, L"64 px");
+  const UINT checked_icon_size = icon_size_ <= 32   ? kCommandIconSize32
+                                 : icon_size_ <= 40 ? kCommandIconSize40
+                                 : icon_size_ <= 48 ? kCommandIconSize48
+                                 : icon_size_ <= 56 ? kCommandIconSize56
+                                                    : kCommandIconSize64;
   CheckMenuRadioItem(icon_size_menu,
-                     kCommandIconSize16,
-                     kCommandIconSize40,
+                     kCommandIconSize32,
+                     kCommandIconSize64,
                      checked_icon_size,
                      MF_BYCOMMAND);
   AppendMenuW(menu,
@@ -714,30 +835,25 @@ void Win32Host::ShowTrayMenu() {
               reinterpret_cast<UINT_PTR>(icon_size_menu),
               L"图标大小");
 
-  AppendMenuW(dot_size_menu, MF_STRING, kCommandDotSize8, L"8 px");
   AppendMenuW(dot_size_menu, MF_STRING, kCommandDotSize12, L"12 px");
   AppendMenuW(dot_size_menu, MF_STRING, kCommandDotSize16, L"16 px");
   AppendMenuW(dot_size_menu, MF_STRING, kCommandDotSize20, L"20 px");
   AppendMenuW(dot_size_menu, MF_STRING, kCommandDotSize24, L"24 px");
-  const UINT checked_dot_size = dot_size_ <= 8    ? kCommandDotSize8
-                                : dot_size_ <= 12 ? kCommandDotSize12
+  AppendMenuW(dot_size_menu, MF_STRING, kCommandDotSize28, L"28 px");
+  const UINT checked_dot_size = dot_size_ <= 12   ? kCommandDotSize12
                                 : dot_size_ <= 16 ? kCommandDotSize16
                                 : dot_size_ <= 20 ? kCommandDotSize20
-                                                  : kCommandDotSize24;
+                                : dot_size_ <= 24 ? kCommandDotSize24
+                                                  : kCommandDotSize28;
   CheckMenuRadioItem(dot_size_menu,
-                     kCommandDotSize8,
-                     kCommandDotSize24,
+                     kCommandDotSize12,
+                     kCommandDotSize28,
                      checked_dot_size,
                      MF_BYCOMMAND);
   AppendMenuW(menu,
               MF_POPUP,
               reinterpret_cast<UINT_PTR>(dot_size_menu),
               L"圆点大小");
-  AppendMenuW(menu, MF_STRING, kCommandChooseIcon, L"选择自定义图标…");
-  AppendMenuW(menu,
-              MF_STRING | (icon_path_.empty() ? MF_GRAYED : MF_ENABLED),
-              kCommandDefaultIcon,
-              L"恢复默认图标");
 
   const std::wstring shortcut_label =
       L"设置自定义快捷键…（" + Utf8ToWideLocal(custom_shortcut_) + L"）";
@@ -801,25 +917,22 @@ void Win32Host::HandleTrayCommand(unsigned int command) {
       }
       break;
     }
-    case kCommandToggleHover:
-      SendEvent("toggle-hover");
+    case kCommandIndicatorClick:
+      SendEvent("set-indicator-action", "click");
       break;
-    case kCommandIconSize16: SendEvent("set-icon-size", "16"); break;
-    case kCommandIconSize20: SendEvent("set-icon-size", "20"); break;
-    case kCommandIconSize24: SendEvent("set-icon-size", "24"); break;
+    case kCommandIndicatorHover:
+      SendEvent("set-indicator-action", "hover");
+      break;
     case kCommandIconSize32: SendEvent("set-icon-size", "32"); break;
     case kCommandIconSize40: SendEvent("set-icon-size", "40"); break;
-    case kCommandDotSize8: SendEvent("set-dot-size", "8"); break;
+    case kCommandIconSize48: SendEvent("set-icon-size", "48"); break;
+    case kCommandIconSize56: SendEvent("set-icon-size", "56"); break;
+    case kCommandIconSize64: SendEvent("set-icon-size", "64"); break;
     case kCommandDotSize12: SendEvent("set-dot-size", "12"); break;
     case kCommandDotSize16: SendEvent("set-dot-size", "16"); break;
     case kCommandDotSize20: SendEvent("set-dot-size", "20"); break;
     case kCommandDotSize24: SendEvent("set-dot-size", "24"); break;
-    case kCommandChooseIcon:
-      ChooseIndicatorIcon();
-      break;
-    case kCommandDefaultIcon:
-      SendEvent("set-icon-path", "");
-      break;
+    case kCommandDotSize28: SendEvent("set-dot-size", "28"); break;
     case kCommandSetShortcut:
       ShowShortcutCapture();
       break;
@@ -832,21 +945,6 @@ void Win32Host::HandleTrayCommand(unsigned int command) {
   }
 }
 
-void Win32Host::ChooseIndicatorIcon() {
-  wchar_t path[MAX_PATH]{};
-  OPENFILENAMEW dialog{};
-  dialog.lStructSize = sizeof(dialog);
-  dialog.hwndOwner = owner_window_;
-  dialog.lpstrFilter = L"Icon files (*.ico)\0*.ico\0All files (*.*)\0*.*\0";
-  dialog.lpstrFile = path;
-  dialog.nMaxFile = ARRAYSIZE(path);
-  dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-  dialog.lpstrDefExt = L"ico";
-  if (GetOpenFileNameW(&dialog)) {
-    SendEvent("set-icon-path", WideToUtf8(path));
-  }
-}
-
 void Win32Host::ShowShortcutCapture() {
   if (shortcut_window_) {
     ShowWindow(shortcut_window_, SW_RESTORE);
@@ -856,14 +954,16 @@ void Win32Host::ShowShortcutCapture() {
   }
 
   captured_shortcut_.clear();
-  shortcut_window_ = CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOOLWINDOW,
+  constexpr DWORD extended_style = WS_EX_DLGMODALFRAME | WS_EX_TOOLWINDOW;
+  constexpr DWORD window_style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
+  shortcut_window_ = CreateWindowExW(extended_style,
                                      kShortcutClassName,
                                      L"设置自定义快捷键",
-                                     WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+                                     window_style,
                                      CW_USEDEFAULT,
                                      CW_USEDEFAULT,
-                                     400,
-                                     190,
+                                     440,
+                                     220,
                                      owner_window_,
                                      nullptr,
                                      instance_,
@@ -872,15 +972,35 @@ void Win32Host::ShowShortcutCapture() {
     return;
   }
 
-  HFONT font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+  const UINT dpi = GetWindowDpiCompat(shortcut_window_);
+  ResizeAndCenterWindow(shortcut_window_, 420, 184, window_style, extended_style, dpi);
+  const auto scaled = [dpi](int value) { return ScaleForDpi(value, dpi); };
+
+  shortcut_font_ = CreateFontW(-MulDiv(10, static_cast<int>(dpi), 72),
+                               0,
+                               0,
+                               0,
+                               FW_NORMAL,
+                               FALSE,
+                               FALSE,
+                               FALSE,
+                               DEFAULT_CHARSET,
+                               OUT_DEFAULT_PRECIS,
+                               CLIP_DEFAULT_PRECIS,
+                               CLEARTYPE_QUALITY,
+                               DEFAULT_PITCH | FF_DONTCARE,
+                               L"Microsoft YaHei UI");
+  HFONT font = shortcut_font_
+                   ? shortcut_font_
+                   : static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
   HWND instructions = CreateWindowExW(0,
                                       L"STATIC",
-                                      L"请按下包含修饰键的组合，例如 Ctrl+Alt+G：",
-                                      WS_CHILD | WS_VISIBLE,
-                                      20,
-                                      18,
-                                      340,
-                                      24,
+                                      L"请按下包含修饰键的组合，例如 Ctrl+Alt+G。\r\n按 Esc 可取消。",
+                                      WS_CHILD | WS_VISIBLE | SS_LEFT,
+                                      scaled(20),
+                                      scaled(16),
+                                      scaled(380),
+                                      scaled(42),
                                       shortcut_window_,
                                       nullptr,
                                       instance_,
@@ -889,10 +1009,10 @@ void Win32Host::ShowShortcutCapture() {
                                           L"STATIC",
                                           Utf8ToWideLocal(custom_shortcut_).c_str(),
                                           WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE,
-                                          20,
-                                          52,
-                                          340,
-                                          36,
+                                          scaled(20),
+                                          scaled(66),
+                                          scaled(380),
+                                          scaled(44),
                                           shortcut_window_,
                                           nullptr,
                                           instance_,
@@ -900,11 +1020,11 @@ void Win32Host::ShowShortcutCapture() {
   HWND save_button = CreateWindowExW(0,
                                      L"BUTTON",
                                      L"保存",
-                                     WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-                                     194,
-                                     108,
-                                     80,
-                                     28,
+                                     WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
+                                     scaled(224),
+                                     scaled(132),
+                                     scaled(82),
+                                     scaled(32),
                                      shortcut_window_,
                                      reinterpret_cast<HMENU>(
                                          static_cast<INT_PTR>(kShortcutSaveButton)),
@@ -913,11 +1033,11 @@ void Win32Host::ShowShortcutCapture() {
   HWND cancel_button = CreateWindowExW(0,
                                        L"BUTTON",
                                        L"取消",
-                                       WS_CHILD | WS_VISIBLE,
-                                       282,
-                                       108,
-                                       80,
-                                       28,
+                                       WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+                                       scaled(318),
+                                       scaled(132),
+                                       scaled(82),
+                                       scaled(32),
                                        shortcut_window_,
                                        reinterpret_cast<HMENU>(
                                            static_cast<INT_PTR>(kShortcutCancelButton)),
@@ -953,7 +1073,6 @@ void Win32Host::ApplyIndicator(const IndicatorRequest& request) {
 
   indicator_style_ = request.style == "dot" ? "dot" : "icon";
   indicator_size_ = request.size;
-  indicator_icon_path_ = request.icon_path;
   indicator_hover_enabled_ = request.hover_enabled;
   indicator_hover_delay_ms_ = request.hover_delay_ms;
   EndIndicatorHoverTracking();
@@ -975,31 +1094,17 @@ void Win32Host::ApplyIndicator(const IndicatorRequest& request) {
                    static_cast<int>(monitor_info.rcWork.bottom) - size);
   }
 
-  HRGN region = indicator_style_ == "dot" ? CreateEllipticRgn(0, 0, size, size)
-                                           : CreateRoundRectRgn(0, 0, size + 1, size + 1, 8, 8);
-  if (region && !SetWindowRgn(indicator_window_, region, FALSE)) {
-    DeleteObject(region);
-  }
-
   if (indicator_icon_) {
     DestroyIcon(indicator_icon_);
     indicator_icon_ = nullptr;
   }
-  if (indicator_style_ == "icon" && !indicator_icon_path_.empty()) {
-    const std::wstring icon_path = Utf8ToWideLocal(indicator_icon_path_);
-    indicator_icon_ = static_cast<HICON>(LoadImageW(nullptr,
-                                                    icon_path.c_str(),
-                                                    IMAGE_ICON,
-                                                    size,
-                                                    size,
-                                                    LR_LOADFROMFILE));
-  }
-  if (indicator_style_ == "icon" && !indicator_icon_) {
+  if (indicator_style_ == "icon") {
+    const int icon_extent = std::max(8, size - std::max(6, size / 4));
     indicator_icon_ = static_cast<HICON>(LoadImageW(instance_,
                                                     MAKEINTRESOURCEW(IDI_SELECTION_FORWARD),
                                                     IMAGE_ICON,
-                                                    size,
-                                                    size,
+                                                    icon_extent,
+                                                    icon_extent,
                                                     LR_DEFAULTCOLOR));
   }
 
@@ -1009,41 +1114,147 @@ void Win32Host::ApplyIndicator(const IndicatorRequest& request) {
                y,
                size,
                size,
-               SWP_NOACTIVATE | SWP_SHOWWINDOW);
-  InvalidateRect(indicator_window_, nullptr, TRUE);
-  UpdateWindow(indicator_window_);
+               SWP_NOACTIVATE);
+  PaintIndicator(indicator_window_);
+  ShowWindow(indicator_window_, SW_SHOWNOACTIVATE);
 }
 
 void Win32Host::PaintIndicator(HWND window) {
-  PAINTSTRUCT paint{};
-  HDC device = BeginPaint(window, &paint);
-  RECT bounds{};
-  GetClientRect(window, &bounds);
-
-  HBRUSH brush = CreateSolidBrush(kIndicatorColor);
-  FillRect(device, &bounds, brush);
-  DeleteObject(brush);
-
-  if (indicator_style_ == "icon" && indicator_icon_) {
-    DrawIconEx(device,
-               0,
-               0,
-               indicator_icon_,
-               indicator_size_,
-               indicator_size_,
-               0,
-               nullptr,
-               DI_NORMAL);
-  } else if (indicator_style_ == "icon") {
-    SetBkMode(device, TRANSPARENT);
-    SetTextColor(device, RGB(255, 255, 255));
-    HFONT font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-    HGDIOBJ previous_font = SelectObject(device, font);
-    DrawTextW(device, L"G", 1, &bounds, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-    SelectObject(device, previous_font);
+  const int size = indicator_size_;
+  HDC screen = GetDC(nullptr);
+  HDC memory = CreateCompatibleDC(screen);
+  BITMAPINFO bitmap_info{};
+  bitmap_info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  bitmap_info.bmiHeader.biWidth = size;
+  bitmap_info.bmiHeader.biHeight = -size;
+  bitmap_info.bmiHeader.biPlanes = 1;
+  bitmap_info.bmiHeader.biBitCount = 32;
+  bitmap_info.bmiHeader.biCompression = BI_RGB;
+  void* raw_pixels = nullptr;
+  HBITMAP bitmap = CreateDIBSection(
+      screen, &bitmap_info, DIB_RGB_COLORS, &raw_pixels, nullptr, 0);
+  if (!memory || !bitmap || !raw_pixels) {
+    if (bitmap) DeleteObject(bitmap);
+    if (memory) DeleteDC(memory);
+    ReleaseDC(nullptr, screen);
+    return;
   }
 
-  EndPaint(window, &paint);
+  HGDIOBJ previous_bitmap = SelectObject(memory, bitmap);
+  auto* pixels = static_cast<BgraPixel*>(raw_pixels);
+  std::fill_n(pixels, size * size, BgraPixel{});
+
+  const bool icon_style = indicator_style_ == "icon";
+  const double radius = icon_style ? std::max(5.0, size * 0.22) : size / 2.0;
+  for (int pixel_y = 0; pixel_y < size; ++pixel_y) {
+    for (int pixel_x = 0; pixel_x < size; ++pixel_x) {
+      const double outer = icon_style
+                               ? RoundedRectangleCoverage(
+                                     pixel_x, pixel_y, 0.0, 0.0, size, size, radius)
+                               : CircleCoverage(pixel_x, pixel_y, size / 2.0, size / 2.0);
+      if (outer <= 0.0) {
+        continue;
+      }
+      if (!icon_style) {
+        SetPremultipliedPixel(
+            &pixels[pixel_y * size + pixel_x], kIndicatorColor, outer, outer);
+        continue;
+      }
+
+      const double inner = RoundedRectangleCoverage(
+          pixel_x,
+          pixel_y,
+          2.0,
+          2.0,
+          size - 2.0,
+          size - 2.0,
+          std::max(3.0, radius - 2.0));
+      const double border = std::max(0.0, outer - inner);
+      const double alpha = outer;
+      BgraPixel& pixel = pixels[pixel_y * size + pixel_x];
+      pixel.red = static_cast<std::uint8_t>(std::lround(
+          GetRValue(kIndicatorBorderColor) * border +
+          GetRValue(kIndicatorBackgroundColor) * inner));
+      pixel.green = static_cast<std::uint8_t>(std::lround(
+          GetGValue(kIndicatorBorderColor) * border +
+          GetGValue(kIndicatorBackgroundColor) * inner));
+      pixel.blue = static_cast<std::uint8_t>(std::lround(
+          GetBValue(kIndicatorBorderColor) * border +
+          GetBValue(kIndicatorBackgroundColor) * inner));
+      pixel.alpha = static_cast<std::uint8_t>(std::lround(255.0 * alpha));
+    }
+  }
+
+  if (icon_style && indicator_icon_) {
+    const int icon_extent = std::max(12, size - std::max(10, size / 3));
+    const int inset = (size - icon_extent) / 2;
+    HDC icon_memory = CreateCompatibleDC(screen);
+    void* raw_icon_pixels = nullptr;
+    HBITMAP icon_bitmap = CreateDIBSection(
+        screen, &bitmap_info, DIB_RGB_COLORS, &raw_icon_pixels, nullptr, 0);
+    if (icon_memory && icon_bitmap && raw_icon_pixels) {
+      HGDIOBJ previous_icon_bitmap = SelectObject(icon_memory, icon_bitmap);
+      auto* icon_pixels = static_cast<BgraPixel*>(raw_icon_pixels);
+      std::fill_n(icon_pixels, size * size, BgraPixel{});
+      DrawIconEx(icon_memory,
+                 inset,
+                 inset,
+                 indicator_icon_,
+                 icon_extent,
+                 icon_extent,
+                 0,
+                 nullptr,
+                 DI_NORMAL);
+      for (int pixel = 0; pixel < size * size; ++pixel) {
+        const double source_alpha = icon_pixels[pixel].alpha / 255.0;
+        if (source_alpha <= 0.0) {
+          continue;
+        }
+        const double destination_alpha = pixels[pixel].alpha / 255.0;
+        pixels[pixel].red = static_cast<std::uint8_t>(std::clamp(
+            icon_pixels[pixel].red + pixels[pixel].red * (1.0 - source_alpha),
+            0.0,
+            255.0));
+        pixels[pixel].green = static_cast<std::uint8_t>(std::clamp(
+            icon_pixels[pixel].green + pixels[pixel].green * (1.0 - source_alpha),
+            0.0,
+            255.0));
+        pixels[pixel].blue = static_cast<std::uint8_t>(std::clamp(
+            icon_pixels[pixel].blue + pixels[pixel].blue * (1.0 - source_alpha),
+            0.0,
+            255.0));
+        pixels[pixel].alpha = static_cast<std::uint8_t>(std::lround(
+            255.0 * (source_alpha + destination_alpha * (1.0 - source_alpha))));
+      }
+      SelectObject(icon_memory, previous_icon_bitmap);
+    }
+    if (icon_bitmap) DeleteObject(icon_bitmap);
+    if (icon_memory) DeleteDC(icon_memory);
+  }
+
+  RECT window_bounds{};
+  GetWindowRect(window, &window_bounds);
+  POINT destination{window_bounds.left, window_bounds.top};
+  POINT source{0, 0};
+  SIZE dimensions{size, size};
+  BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+  const BOOL updated = UpdateLayeredWindow(window,
+                                           screen,
+                                           &destination,
+                                           &dimensions,
+                                           memory,
+                                           &source,
+                                           0,
+                                           &blend,
+                                           ULW_ALPHA);
+  if (!updated) {
+    SendEvent("native-error", "UpdateLayeredWindow:" + std::to_string(GetLastError()));
+  }
+
+  SelectObject(memory, previous_bitmap);
+  DeleteObject(bitmap);
+  DeleteDC(memory);
+  ReleaseDC(nullptr, screen);
 }
 
 void Win32Host::BeginIndicatorHoverTracking() {
@@ -1207,7 +1418,6 @@ LRESULT CALLBACK Win32Host::OwnerWindowProc(HWND window,
       host->indicator_action_ = request->indicator_action;
       host->icon_size_ = request->icon_size;
       host->dot_size_ = request->dot_size;
-      host->icon_path_ = request->icon_path;
       host->custom_shortcut_ = request->custom_shortcut;
       if (host->trigger_mode_ == "custom") {
         const ShortcutResult result = host->ApplyShortcut(host->custom_shortcut_);
@@ -1277,6 +1487,8 @@ LRESULT CALLBACK Win32Host::ShortcutWindowProc(HWND window,
       }
       return 0;
     }
+    case WM_GETDLGCODE:
+      return DLGC_WANTALLKEYS;
     case WM_COMMAND:
       if (LOWORD(wparam) == kShortcutSaveButton) {
         const std::string shortcut = host->captured_shortcut_.empty()
@@ -1311,6 +1523,10 @@ LRESULT CALLBACK Win32Host::ShortcutWindowProc(HWND window,
       host->shortcut_window_ = nullptr;
       host->shortcut_value_label_ = nullptr;
       host->captured_shortcut_.clear();
+      if (host->shortcut_font_) {
+        DeleteObject(host->shortcut_font_);
+        host->shortcut_font_ = nullptr;
+      }
       return 0;
   }
 
@@ -1332,6 +1548,7 @@ LRESULT CALLBACK Win32Host::IndicatorWindowProc(HWND window,
 
   switch (message) {
     case WM_PAINT:
+      ValidateRect(window, nullptr);
       host->PaintIndicator(window);
       return 0;
     case WM_ERASEBKGND:
@@ -1352,9 +1569,11 @@ LRESULT CALLBACK Win32Host::IndicatorWindowProc(HWND window,
       }
       return 0;
     case WM_LBUTTONUP:
-      host->EndIndicatorHoverTracking();
-      ShowWindow(window, SW_HIDE);
-      host->SendEvent("indicator-click");
+      if (!host->indicator_hover_enabled_) {
+        host->EndIndicatorHoverTracking();
+        ShowWindow(window, SW_HIDE);
+        host->SendEvent("indicator-click");
+      }
       return 0;
     case WM_DESTROY:
       host->indicator_window_ = nullptr;

@@ -28,13 +28,11 @@ class Win32Host {
                   const std::string& indicator_action,
                   int icon_size,
                   int dot_size,
-                  const std::string& icon_path,
                   const std::string& custom_shortcut);
   bool ShowIndicator(int x,
                      int y,
                      const std::string& style,
                      int size,
-                     const std::string& icon_path,
                      bool hover_enabled,
                      unsigned int hover_delay_ms);
   bool HideIndicator();
@@ -43,6 +41,7 @@ class Win32Host {
   static bool SetAutoStart(bool enabled,
                            const std::wstring& executable_path,
                            const std::wstring& arguments_text);
+  static bool OpenExternalUrl(const std::wstring& url);
 
  private:
   struct IndicatorRequest;
@@ -65,7 +64,6 @@ class Win32Host {
   void RemoveTrayIcon();
   void ShowTrayMenu();
   void HandleTrayCommand(unsigned int command);
-  void ChooseIndicatorIcon();
   void ShowShortcutCapture();
   void CloseShortcutCapture();
 
@@ -93,6 +91,7 @@ class Win32Host {
   HWND indicator_window_ = nullptr;
   HWND shortcut_window_ = nullptr;
   HWND shortcut_value_label_ = nullptr;
+  HFONT shortcut_font_ = nullptr;
   NOTIFYICONDATAW tray_data_{};
   bool tray_added_ = false;
   UINT taskbar_created_message_ = 0;
@@ -101,9 +100,8 @@ class Win32Host {
   bool auto_start_ = false;
   std::string trigger_mode_ = "immediate";
   std::string indicator_action_ = "click";
-  int icon_size_ = 24;
-  int dot_size_ = 12;
-  std::string icon_path_;
+  int icon_size_ = 40;
+  int dot_size_ = 16;
   std::string custom_shortcut_ = "Ctrl+Alt+G";
   std::string captured_shortcut_;
   bool hotkey_registered_ = false;
@@ -111,8 +109,7 @@ class Win32Host {
   UINT hotkey_virtual_key_ = 0;
 
   std::string indicator_style_ = "icon";
-  int indicator_size_ = 24;
-  std::string indicator_icon_path_;
+  int indicator_size_ = 40;
   HICON indicator_icon_ = nullptr;
   bool indicator_hover_enabled_ = false;
   bool indicator_tracking_ = false;

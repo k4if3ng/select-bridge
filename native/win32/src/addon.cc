@@ -146,26 +146,24 @@ napi_value Stop(napi_env env, napi_callback_info) {
 }
 
 napi_value UpdateTray(napi_env env, napi_callback_info info) {
-  size_t count = 8;
-  napi_value arguments[8]{};
+  size_t count = 7;
+  napi_value arguments[7]{};
   napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
 
   bool enabled = true;
   bool auto_start = false;
   std::string trigger_mode;
   std::string indicator_action;
-  int icon_size = 24;
-  int dot_size = 12;
-  std::string icon_path;
+  int icon_size = 40;
+  int dot_size = 16;
   std::string custom_shortcut;
-  if (count != 8 || !GetBoolean(env, arguments[0], &enabled) ||
+  if (count != 7 || !GetBoolean(env, arguments[0], &enabled) ||
       !GetUtf8(env, arguments[1], &trigger_mode) ||
       !GetBoolean(env, arguments[2], &auto_start) ||
       !GetUtf8(env, arguments[3], &indicator_action) ||
       !GetInt32OrNull(env, arguments[4], &icon_size) ||
       !GetInt32OrNull(env, arguments[5], &dot_size) ||
-      !GetUtf8(env, arguments[6], &icon_path) ||
-      !GetUtf8(env, arguments[7], &custom_shortcut)) {
+      !GetUtf8(env, arguments[6], &custom_shortcut)) {
     ThrowLastError(env, "updateTray received invalid arguments");
     return nullptr;
   }
@@ -178,28 +176,25 @@ napi_value UpdateTray(napi_env env, napi_callback_info info) {
                                    indicator_action,
                                    icon_size,
                                    dot_size,
-                                   icon_path,
                                    custom_shortcut));
 }
 
 napi_value ShowIndicator(napi_env env, napi_callback_info info) {
-  size_t count = 7;
-  napi_value arguments[7]{};
+  size_t count = 6;
+  napi_value arguments[6]{};
   napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
 
   int x = INT_MIN;
   int y = INT_MIN;
   std::string style;
-  int size = 24;
-  std::string icon_path;
+  int size = 40;
   bool hover_enabled = false;
   unsigned int hover_delay_ms = 450;
-  if (count != 7 || !GetInt32OrNull(env, arguments[0], &x) ||
+  if (count != 6 || !GetInt32OrNull(env, arguments[0], &x) ||
       !GetInt32OrNull(env, arguments[1], &y) || !GetUtf8(env, arguments[2], &style) ||
       !GetInt32OrNull(env, arguments[3], &size) ||
-      !GetUtf8(env, arguments[4], &icon_path) ||
-      !GetBoolean(env, arguments[5], &hover_enabled) ||
-      !GetUint32(env, arguments[6], &hover_delay_ms)) {
+      !GetBoolean(env, arguments[4], &hover_enabled) ||
+      !GetUint32(env, arguments[5], &hover_delay_ms)) {
     ThrowLastError(env, "showIndicator received invalid arguments");
     return nullptr;
   }
@@ -207,7 +202,7 @@ napi_value ShowIndicator(napi_env env, napi_callback_info info) {
   return CreateBoolean(
       env,
       g_host &&
-          g_host->ShowIndicator(x, y, style, size, icon_path, hover_enabled, hover_delay_ms));
+          g_host->ShowIndicator(x, y, style, size, hover_enabled, hover_delay_ms));
 }
 
 napi_value HideIndicator(napi_env env, napi_callback_info) {
@@ -253,6 +248,20 @@ napi_value SetAutoStart(napi_env env, napi_callback_info info) {
   return CreateBoolean(env, result);
 }
 
+napi_value OpenExternalUrl(napi_env env, napi_callback_info info) {
+  size_t count = 1;
+  napi_value arguments[1]{};
+  napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
+
+  std::string url;
+  if (count != 1 || !GetUtf8(env, arguments[0], &url)) {
+    ThrowLastError(env, "openExternalUrl(url) requires a string");
+    return nullptr;
+  }
+
+  return CreateBoolean(env, Win32Host::OpenExternalUrl(Utf8ToWide(url)));
+}
+
 napi_value Initialize(napi_env env, napi_value exports) {
   const napi_property_descriptor properties[] = {
       {"start", nullptr, Start, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -262,6 +271,7 @@ napi_value Initialize(napi_env env, napi_value exports) {
       {"hideIndicator", nullptr, HideIndicator, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"registerShortcut", nullptr, RegisterShortcut, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"setAutoStart", nullptr, SetAutoStart, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"openExternalUrl", nullptr, OpenExternalUrl, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
   napi_define_properties(env, exports, sizeof(properties) / sizeof(properties[0]), properties);
   return exports;
