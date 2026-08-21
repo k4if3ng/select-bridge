@@ -474,7 +474,14 @@ void Win32Host::Stop() {
     PostThreadMessageW(thread_id_, WM_QUIT, 0, 0);
   }
 
-  WaitForSingleObject(thread, 5000);
+  // The UI thread owns every HWND and the thread-safe function release. Never
+  // destroy the host while it may still be executing on that thread.
+  const DWORD wait_result = WaitForSingleObject(thread, 5000);
+  if (wait_result == WAIT_TIMEOUT) {
+    // A modal shortcut window or a delayed Win32 callback can outlive the
+    // normal stop message. Keep waiting rather than risking use-after-free.
+    WaitForSingleObject(thread, INFINITE);
+  }
   CloseHandle(thread);
   thread_ = nullptr;
   thread_id_ = 0;
@@ -630,6 +637,17 @@ DWORD Win32Host::ThreadMain() {
 
   if (initialized) {
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+      const bool shortcut_key_message =
+          shortcut_window_ &&
+          (message.message == WM_KEYDOWN || message.message == WM_SYSKEYDOWN) &&
+          (message.hwnd == shortcut_window_ || IsChild(shortcut_window_, message.hwnd));
+      if (shortcut_key_message) {
+        ShortcutWindowProc(shortcut_window_,
+                           message.message,
+                           message.wParam,
+                           message.lParam);
+        continue;
+      }
       TranslateMessage(&message);
       DispatchMessageW(&message);
     }

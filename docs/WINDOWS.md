@@ -115,6 +115,8 @@ release/
 
 主程序使用 Node SEA，并包含应用和 `selection-hook` 的 JavaScript 代码；两个原生 `.node` 文件保留在外部。
 
+v1.0.1 重点修复原生 UI 线程退出时的生命周期保护，并修复自定义快捷键窗口在焦点落到按钮或静态控件后无法继续捕获组合键的问题。
+
 - Portable ZIP 解压后包含三个运行文件和 `portable.flag`，配置写入同目录 `data/config.json`。整个目录可移动，单独移动 EXE 不可运行；移动后需要重新启用一次开机启动，以刷新注册表中的绝对路径。
 - Setup EXE 使用 Inno Setup 6，把同样三个运行文件安装到当前用户目录，创建开始菜单快捷方式和卸载项，配置继续使用 `%APPDATA%`。
 
