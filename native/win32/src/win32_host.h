@@ -92,6 +92,8 @@ class Win32Host {
   HWND shortcut_window_ = nullptr;
   HWND shortcut_value_label_ = nullptr;
   HFONT shortcut_font_ = nullptr;
+  HFONT shortcut_value_font_ = nullptr;
+  HBRUSH shortcut_background_brush_ = nullptr;
   NOTIFYICONDATAW tray_data_{};
   bool tray_added_ = false;
   UINT taskbar_created_message_ = 0;
