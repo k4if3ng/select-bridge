@@ -1,5 +1,7 @@
 import { ConfigStore, loadRuntimeOptions, type AppConfig } from './config.js';
 import { TriggerController } from './core/trigger-controller.js';
+import { getDistributionMode } from './distribution.js';
+import { acquireSingleInstance } from './platform/single-instance.js';
 import type { PlatformEvent, PlatformHost } from './platform/types.js';
 import { createPlatformHost } from './platform/create-platform-host.js';
 import { SelectionHookAdapter } from './selection/selection-hook-adapter.js';
@@ -7,6 +9,16 @@ import { GoldenDictTarget } from './targets/goldendict-target.js';
 
 export async function runApplication(argv = process.argv.slice(2)): Promise<void> {
   const runtime = loadRuntimeOptions(argv);
+  const distribution = getDistributionMode();
+  const instanceGuard = await acquireSingleInstance(distribution);
+  if (!instanceGuard.isPrimary) {
+    const active = instanceGuard.activeDistribution ?? 'unknown';
+    console.log(
+      `[instance] Selection Forward 已在运行（${active}）；当前 ${distribution} 实例退出。`,
+    );
+    return;
+  }
+
   const configStore = new ConfigStore();
   let config = await configStore.load();
   config = applyRuntimeOverrides(config, runtime.triggerMode, runtime.customShortcut);
@@ -43,6 +55,7 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
     hook?.stop();
     hook?.cleanup();
     await platform.stop();
+    await instanceGuard.close();
   };
 
   const controller = new TriggerController({

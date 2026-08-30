@@ -1,7 +1,8 @@
-import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+
+import { getDistributionMode } from './distribution.js';
 
 export const TRIGGER_MODES = [
   'immediate',
@@ -193,11 +194,8 @@ function resolveConfigPath(): string {
     return process.env.SELECTION_FORWARD_CONFIG;
   }
 
-  if (process.platform === 'win32' && process.env.SELECTION_FORWARD_PACKAGED === '1') {
-    const executableDirectory = dirname(process.execPath);
-    if (existsSync(join(executableDirectory, 'portable.flag'))) {
-      return join(executableDirectory, 'data', 'config.json');
-    }
+  if (process.platform === 'win32' && getDistributionMode() === 'portable') {
+    return join(dirname(process.execPath), 'data', 'config.json');
   }
 
   const baseDirectory =
