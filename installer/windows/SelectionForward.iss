@@ -43,8 +43,29 @@ Source: "{#SourceDir}\selection_forward_win32_ui.node"; DestDir: "{app}"; Flags:
 [Icons]
 Name: "{group}\Selection Forward"; Filename: "{app}\SelectionForward.exe"; WorkingDir: "{app}"
 
-[Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "SelectionForward"; Flags: uninsdeletevalue
-
 [Run]
 Filename: "{app}\SelectionForward.exe"; Description: "启动 Selection Forward"; Flags: nowait postinstall skipifsilent
+
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ExistingCommand: String;
+  SetupCommand: String;
+begin
+  if CurUninstallStep <> usUninstall then
+    Exit;
+
+  SetupCommand := AddQuotes(ExpandConstant('{app}\SelectionForward.exe')) + ' --silent';
+  if RegQueryStringValue(
+       HKCU,
+       'Software\Microsoft\Windows\CurrentVersion\Run',
+       'SelectionForward',
+       ExistingCommand) and
+     (CompareText(ExistingCommand, SetupCommand) = 0) then
+  begin
+    RegDeleteValue(
+      HKCU,
+      'Software\Microsoft\Windows\CurrentVersion\Run',
+      'SelectionForward');
+  end;
+end;

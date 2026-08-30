@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cwchar>
 #include <memory>
 #include <sstream>
 #include <utility>
@@ -572,7 +573,7 @@ bool Win32Host::SetAutoStart(bool enabled,
                                                0,
                                                nullptr,
                                                REG_OPTION_NON_VOLATILE,
-                                               KEY_SET_VALUE,
+                                               KEY_QUERY_VALUE | KEY_SET_VALUE,
                                                nullptr,
                                                &key,
                                                nullptr);
@@ -580,13 +581,14 @@ bool Win32Host::SetAutoStart(bool enabled,
     return false;
   }
 
+  std::wstring command = QuoteExecutable(executable_path);
+  if (!arguments_text.empty()) {
+    command += L" ";
+    command += arguments_text;
+  }
+
   LSTATUS result = ERROR_SUCCESS;
   if (enabled) {
-    std::wstring command = QuoteExecutable(executable_path);
-    if (!arguments_text.empty()) {
-      command += L" ";
-      command += arguments_text;
-    }
     result = RegSetValueExW(key,
                             kRunValueName,
                             0,
@@ -594,8 +596,27 @@ bool Win32Host::SetAutoStart(bool enabled,
                             reinterpret_cast<const BYTE*>(command.c_str()),
                             static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
   } else {
-    result = RegDeleteValueW(key, kRunValueName);
+    DWORD value_type = 0;
+    DWORD value_size = 0;
+    result = RegQueryValueExW(
+        key, kRunValueName, nullptr, &value_type, nullptr, &value_size);
     if (result == ERROR_FILE_NOT_FOUND) {
+      result = ERROR_SUCCESS;
+    } else if (result == ERROR_SUCCESS && value_type == REG_SZ) {
+      std::vector<wchar_t> current_value(value_size / sizeof(wchar_t) + 1, L'\0');
+      result = RegQueryValueExW(key,
+                                kRunValueName,
+                                nullptr,
+                                &value_type,
+                                reinterpret_cast<BYTE*>(current_value.data()),
+                                &value_size);
+      if (result == ERROR_SUCCESS &&
+          _wcsicmp(current_value.data(), command.c_str()) == 0) {
+        result = RegDeleteValueW(key, kRunValueName);
+      }
+    } else if (result == ERROR_SUCCESS) {
+      // A value owned by another package or with an unexpected type is not ours
+      // to remove.
       result = ERROR_SUCCESS;
     }
   }
