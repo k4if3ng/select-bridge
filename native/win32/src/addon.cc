@@ -154,7 +154,7 @@ napi_value UpdateTray(napi_env env, napi_callback_info info) {
   bool auto_start = false;
   std::string trigger_mode;
   std::string indicator_action;
-  int icon_size = 40;
+  int icon_size = 32;
   int dot_size = 16;
   std::string custom_shortcut;
   if (count != 7 || !GetBoolean(env, arguments[0], &enabled) ||

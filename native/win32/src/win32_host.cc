@@ -46,11 +46,11 @@ constexpr UINT kCommandIndicatorClick = 1201;
 constexpr UINT kCommandIndicatorHover = 1202;
 constexpr UINT kCommandSetShortcut = 1300;
 constexpr UINT kCommandExit = 1400;
-constexpr UINT kCommandIconSize32 = 1500;
-constexpr UINT kCommandIconSize40 = 1501;
-constexpr UINT kCommandIconSize48 = 1502;
-constexpr UINT kCommandIconSize56 = 1503;
-constexpr UINT kCommandIconSize64 = 1504;
+constexpr UINT kCommandIconSize24 = 1500;
+constexpr UINT kCommandIconSize28 = 1501;
+constexpr UINT kCommandIconSize32 = 1502;
+constexpr UINT kCommandIconSize36 = 1503;
+constexpr UINT kCommandIconSize40 = 1504;
 constexpr UINT kCommandDotSize12 = 1510;
 constexpr UINT kCommandDotSize16 = 1511;
 constexpr UINT kCommandDotSize20 = 1512;
@@ -512,7 +512,7 @@ bool Win32Host::UpdateTray(bool enabled,
   request->trigger_mode = trigger_mode;
   request->auto_start = auto_start;
   request->indicator_action = indicator_action;
-  request->icon_size = std::clamp(icon_size, 32, 64);
+  request->icon_size = std::clamp(icon_size, 24, 40);
   request->dot_size = std::clamp(dot_size, 12, 28);
   request->custom_shortcut = custom_shortcut;
   if (!PostMessageW(owner_window_, kUpdateTrayMessage, 0, reinterpret_cast<LPARAM>(request.get()))) {
@@ -862,19 +862,19 @@ void Win32Host::ShowTrayMenu() {
               reinterpret_cast<UINT_PTR>(indicator_action_menu),
               L"图标/圆点触发方式");
 
+  AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize24, L"24 px");
+  AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize28, L"28 px");
   AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize32, L"32 px");
+  AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize36, L"36 px");
   AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize40, L"40 px");
-  AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize48, L"48 px");
-  AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize56, L"56 px");
-  AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize64, L"64 px");
-  const UINT checked_icon_size = icon_size_ <= 32   ? kCommandIconSize32
-                                 : icon_size_ <= 40 ? kCommandIconSize40
-                                 : icon_size_ <= 48 ? kCommandIconSize48
-                                 : icon_size_ <= 56 ? kCommandIconSize56
-                                                    : kCommandIconSize64;
+  const UINT checked_icon_size = icon_size_ <= 24   ? kCommandIconSize24
+                                 : icon_size_ <= 28 ? kCommandIconSize28
+                                 : icon_size_ <= 32 ? kCommandIconSize32
+                                 : icon_size_ <= 36 ? kCommandIconSize36
+                                                    : kCommandIconSize40;
   CheckMenuRadioItem(icon_size_menu,
-                     kCommandIconSize32,
-                     kCommandIconSize64,
+                     kCommandIconSize24,
+                     kCommandIconSize40,
                      checked_icon_size,
                      MF_BYCOMMAND);
   AppendMenuW(menu,
@@ -970,11 +970,11 @@ void Win32Host::HandleTrayCommand(unsigned int command) {
     case kCommandIndicatorHover:
       SendEvent("set-indicator-action", "hover");
       break;
+    case kCommandIconSize24: SendEvent("set-icon-size", "24"); break;
+    case kCommandIconSize28: SendEvent("set-icon-size", "28"); break;
     case kCommandIconSize32: SendEvent("set-icon-size", "32"); break;
+    case kCommandIconSize36: SendEvent("set-icon-size", "36"); break;
     case kCommandIconSize40: SendEvent("set-icon-size", "40"); break;
-    case kCommandIconSize48: SendEvent("set-icon-size", "48"); break;
-    case kCommandIconSize56: SendEvent("set-icon-size", "56"); break;
-    case kCommandIconSize64: SendEvent("set-icon-size", "64"); break;
     case kCommandDotSize12: SendEvent("set-dot-size", "12"); break;
     case kCommandDotSize16: SendEvent("set-dot-size", "16"); break;
     case kCommandDotSize20: SendEvent("set-dot-size", "20"); break;

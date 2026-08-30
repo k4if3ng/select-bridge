@@ -114,7 +114,7 @@ export class TriggerController {
       case 'set-icon-size':
         this.replaceConfig({
           ...this.config,
-          iconSize: clampInteger(event.value, this.config.iconSize, 32, 64),
+          iconSize: clampInteger(event.value, this.config.iconSize, 24, 40),
         });
         return;
       case 'set-dot-size':

@@ -41,7 +41,7 @@ export interface RuntimeOptions {
 }
 
 export const DEFAULT_CONFIG: Readonly<AppConfig> = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   enabled: true,
   triggerMode: 'immediate',
   indicatorAction: 'click',
@@ -50,7 +50,7 @@ export const DEFAULT_CONFIG: Readonly<AppConfig> = {
   selectionStableMs: 60,
   indicatorTtlMs: 3000,
   hoverDelayMs: 350,
-  iconSize: 40,
+  iconSize: 32,
   dotSize: 16,
   customShortcut: 'Ctrl+Alt+G',
   autoStart: false,
@@ -133,8 +133,8 @@ function sanitizeConfig(value: unknown): AppConfig {
       ? getMigratedTiming(value.hoverDelayMs, 450, DEFAULT_CONFIG.hoverDelayMs)
       : getPositiveInteger(value.hoverDelayMs, DEFAULT_CONFIG.hoverDelayMs),
     iconSize: migrateDefaults
-      ? getMigratedBoundedInteger(value.iconSize, 24, DEFAULT_CONFIG.iconSize, 32, 64)
-      : getBoundedInteger(value.iconSize, DEFAULT_CONFIG.iconSize, 32, 64),
+      ? getMigratedBoundedInteger(value.iconSize, 40, DEFAULT_CONFIG.iconSize, 24, 40)
+      : getBoundedInteger(value.iconSize, DEFAULT_CONFIG.iconSize, 24, 40),
     dotSize: migrateDefaults
       ? getMigratedBoundedInteger(value.dotSize, 24, DEFAULT_CONFIG.dotSize, 12, 28)
       : getBoundedInteger(value.dotSize, DEFAULT_CONFIG.dotSize, 12, 28),
@@ -172,8 +172,8 @@ function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
     iconSize: getBoundedEnvironmentInteger(
       'SELECTION_FORWARD_ICON_SIZE',
       config.iconSize,
-      32,
-      64,
+      24,
+      40,
     ),
     dotSize: getBoundedEnvironmentInteger(
       'SELECTION_FORWARD_DOT_SIZE',

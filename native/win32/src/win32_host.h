@@ -102,7 +102,7 @@ class Win32Host {
   bool auto_start_ = false;
   std::string trigger_mode_ = "immediate";
   std::string indicator_action_ = "click";
-  int icon_size_ = 40;
+  int icon_size_ = 32;
   int dot_size_ = 16;
   std::string custom_shortcut_ = "Ctrl+Alt+G";
   std::string captured_shortcut_;
