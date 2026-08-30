@@ -130,7 +130,7 @@ pnpm start:tray
 
 | 字段 | 默认值 | 作用 |
 | --- | ---: | --- |
-| `schemaVersion` | `5` | 配置格式版本，用于一次性迁移默认值 |
+| `schemaVersion` | `6` | 配置格式版本，用于一次性迁移默认值 |
 | `enabled` | `true` | 是否启用选词监听 |
 | `triggerMode` | `immediate` | `immediate/icon/dot/ctrl/alt/shift/custom` |
 | `indicatorAction` | `click` | `click` 或 `hover`，两者互斥 |
@@ -139,7 +139,7 @@ pnpm start:tray
 | `selectionStableMs` | `60` | 选区稳定时间 |
 | `indicatorTtlMs` | `3000` | 悬浮控件显示期限 |
 | `hoverDelayMs` | `350` | 悬浮触发延迟 |
-| `iconSize` | `40` | 图标边长，可选 32/40/48/56/64 px |
+| `iconSize` | `32` | 图标边长，可选 24/28/32/36/40 px |
 | `dotSize` | `16` | 圆点直径，可选 12/16/20/24/28 px |
 | `customShortcut` | `Ctrl+Alt+G` | Windows 全局组合快捷键 |
 | `autoStart` | `false` | 当前用户开机启动 |
@@ -213,6 +213,8 @@ pnpm build:windows:setup
 
 Portable ZIP 解压后包含 `SelectionForward.exe`、两个 `.node` 原生模块和 `portable.flag`。主 EXE 已内置 Node、应用代码和 `selection-hook` 的 JavaScript 层，最终用户无需安装 Node。Portable 的配置保存在解压目录的 `data/config.json`，因此整个目录可以移动；不能只移动 EXE。若移动前已启用开机启动，需要在移动后关闭并重新启用一次，因为启动项保存的是绝对路径。打包时优先使用 7-Zip 的最大 ZIP 压缩，未安装 7-Zip 时回退到系统 `tar.exe`。Setup 版不带 `portable.flag`，配置保存在 `%APPDATA%\selection-forward\config.json`。
 
+Setup 与 Portable 属于同一个应用实例：同一 Windows 用户下先启动的版本继续运行，后启动的版本通知现有实例后正常退出，避免重复监听和重复查询。两者仍使用各自的配置文件。开机启动项由最后启用它的版本接管；关闭开机启动或卸载 Setup 时，只会删除当前可执行文件自己登记的启动项。
+
 ## 当前阶段边界
 
-这一阶段已经完成核心状态机、托盘、可调悬浮控件、自定义快捷键冲突检测、应用图标、静默开机启动、Portable ZIP 和 Setup 安装器。单实例保护、代码签名、自动更新和完整设置页可在后续阶段补充。
+这一阶段已经完成核心状态机、托盘、可调悬浮控件、自定义快捷键冲突检测、应用图标、静默开机启动、单实例保护、Portable ZIP 和 Setup 安装器。代码签名、自动更新和完整设置页可在后续阶段补充。
