@@ -6,7 +6,7 @@
 - 只修改任务范围内的文件，保留无关的用户改动。
 - 代码标识符和注释使用英文；用户界面文案可以使用中文。
 - 使用 `pnpm`；不要用 npm 或 yarn 改写锁文件。
-- 需要 Python 时使用 `uv`，不直接调用 `python` 或 `python3`。
+- 原生构建直接使用环境 `PATH` 中的 `python`。
 - 除非用户要求，不主动启动全局选区钩子、托盘窗口或 Goldendict-ng。
 - 默认运行方式保持 headless，不引入 Electron、WebView、Tauri 或额外常驻进程。
 

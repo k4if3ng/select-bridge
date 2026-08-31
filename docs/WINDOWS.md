@@ -17,16 +17,14 @@ Windows 平台层提供：
 
 - Windows SDK
 - Visual Studio/Build Tools C++ 桌面开发组件
-- `uv`
+- Python 3，且 `python` 位于环境 `PATH`
 - Node.js 18+；SEA 打包要求 Node.js 24+
 
-原生构建所需 Python 通过 `uv` 获取：
+可在构建前确认当前环境中的 Python：
 
 ```powershell
-uv python find
+python --version
 ```
-
-不要直接调用 `python` 或 `python3`。
 
 ## 命令
 
@@ -146,7 +144,7 @@ v1.0.1 重点修复原生 UI 线程退出时的生命周期保护，并完善自
 ## 常见问题
 
 - 找不到 Node：检查当前 PowerShell 的 Node/FNM PATH，不要把本机绝对路径写入脚本。
-- uv 缓存无权限：为原生构建提供最小必要权限，不要把 Python 复制进仓库。
+- 找不到 Python：确认 `python` 可通过当前 PowerShell 的 `PATH` 直接调用。
 - `.node` 无法覆盖：确认是否被运行中的 Node 进程锁定，不要终止来源不明的进程。
 - 托盘回退 headless：确认 `selection_forward_win32_ui.node` 已构建，且 Node 与模块架构一致。
 - 快捷键冲突：查看 `RegisterHotKey` 返回的 Windows 错误码。

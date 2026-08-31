@@ -1,15 +1,11 @@
 $ErrorActionPreference = 'Stop'
 
-if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-  throw 'uv is required to provide Python for node-gyp.'
+$pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+if (-not $pythonCommand) {
+  throw 'Python is required by node-gyp. Add python to PATH and try again.'
 }
 
-$pythonPath = (uv python find).Trim()
-if (-not $pythonPath) {
-  throw 'uv did not return a Python interpreter path.'
-}
-
-$env:npm_config_python = $pythonPath
+$env:npm_config_python = $pythonCommand.Source
 pnpm exec node-gyp rebuild --directory native/win32
 if ($LASTEXITCODE -ne 0) {
   exit $LASTEXITCODE

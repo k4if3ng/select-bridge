@@ -11,7 +11,7 @@ goldendict://<URL 编码的选词>?target=popup
 - **headless**：默认方式，不加载 GUI、托盘或 Win32 UI 模块，保持最低常驻占用。
 - **Windows 托盘**：按需动态加载轻量 Win32 Node-API 模块，提供托盘、悬浮图标/小圆点、自定义全局快捷键和开机启动。
 
-项目不使用 Electron、WebView 或 Python 运行时。Python 只在构建原生模块时由 `uv` 提供给 `node-gyp`。
+项目不使用 Electron、WebView 或 Python 运行时。Python 只在构建原生模块时由环境 `PATH` 提供给 `node-gyp`。
 
 ## 项目文档
 
@@ -32,7 +32,7 @@ goldendict://<URL 编码的选词>?target=popup
 
 - Windows SDK；
 - Visual Studio/Build Tools 的“使用 C++ 的桌面开发”；
-- [`uv`](https://docs.astral.sh/uv/)，用于向 `node-gyp` 提供 Python。
+- Python 3，并确保 `python` 可通过环境 `PATH` 直接调用。
 
 生成 Windows EXE 需要 Node.js 24 或更高版本；日常源码运行仍支持 Node.js 18+。
 
@@ -69,7 +69,7 @@ pnpm start -- --trigger=shift
 pnpm build:native
 ```
 
-构建脚本通过 `uv python find` 获取 Python，不依赖系统 Python 配置。
+构建脚本通过环境 `PATH` 查找 `python`，并将其传给 `node-gyp`。
 
 然后启动托盘模式：
 
