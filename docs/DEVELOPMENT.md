@@ -32,7 +32,7 @@ headless 宿主在 Windows、macOS 和 Linux 上行为一致：不创建托盘�
 
 宿主模式不写入持久化配置。CLI `--host=native|headless` 的优先级高于别名 `--native`/`--headless`，CLI 又高于 `SELECT_BRIDGE_HOST_MODE`。非 Windows 平台显式请求 native 会立即报错；Windows native 加载失败也不会自动回退。
 
-平台专用工具链和命令放在对应平台文档中。Windows 见 [`WINDOWS.md`](WINDOWS.md)。
+宿主和平台专用工具链放在对应文档中：headless 见 [`HEADLESS.md`](HEADLESS.md)，Windows native 见 [`WINDOWS.md`](WINDOWS.md)。
 
 ## 配置
 
@@ -67,4 +67,5 @@ headless 宿主在 Windows、macOS 和 Linux 上行为一致：不创建托盘�
 
 - `README.md`：安装、使用、配置和发布入口。
 - `docs/ARCHITECTURE.md`：通用模块、状态和边界。
+- `docs/HEADLESS.md`：跨平台无界面宿主、权限和排障。
 - 平台文档：平台 API、工具链、构建、发布和排障。

@@ -92,7 +92,7 @@ Idle
 - 显式请求未实现的 `native` 宿主会直接报错。Windows native 模块加载失败时也明确终止，不做隐式模式切换；用户可显式选择 `--host=headless`。
 - HeadlessHost 遇到 `icon`/`dot` 配置时只为本次运行切换到 `immediate`，不覆盖持久化配置。
 
-具体平台的线程、系统 API、构建和发布方式放在对应平台文档中。Windows 见 [`WINDOWS.md`](WINDOWS.md)。
+具体宿主和平台细节放在对应文档中：跨平台无界面运行见 [`HEADLESS.md`](HEADLESS.md)，Windows 原生线程、系统 API、构建和发布见 [`WINDOWS.md`](WINDOWS.md)。
 
 ## 翻译目标
 

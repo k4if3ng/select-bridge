@@ -15,6 +15,8 @@ Windows 平台层提供：
 
 Windows 默认使用完整 native 宿主，也可以通过 `--host=headless` 或 `--headless` 显式使用跨平台 `HeadlessHost`。native 模块加载失败时直接终止，不会隐式切换模式。
 
+Windows headless 的通用能力和排障见 [`HEADLESS.md`](HEADLESS.md)；本文其余部分主要描述 Windows native 宿主。
+
 ## 环境
 
 - Windows SDK

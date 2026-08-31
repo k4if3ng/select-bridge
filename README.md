@@ -48,7 +48,7 @@ pnpm install
 pnpm start -- --host=headless --trigger=immediate
 ```
 
-headless 模式不创建托盘、设置窗口或悬浮指示器；查询由系统 URL 处理器转交 Goldendict-ng。`icon`/`dot` 配置会在本次运行中切换为 `immediate`，不会覆盖配置文件。
+headless 模式不创建托盘、设置窗口或悬浮指示器；查询由系统 URL 处理器转交 Goldendict-ng。`icon`/`dot` 配置会在本次运行中切换为 `immediate`，不会覆盖配置文件。这里的 headless 仅表示 SelectBridge 自身不创建 UI，仍需要当前用户的图形桌面、全局选区权限和已注册的 `goldendict://` 处理器。
 
 宿主模式与操作系统能力的关系如下：
 
@@ -59,6 +59,8 @@ headless 模式不创建托盘、设置窗口或悬浮指示器；查询由系�
 | Linux | `headless` | 支持 | 暂未提供 |
 
 `--headless` 和 `--native` 分别是两种 `--host` 写法的快捷别名。Windows native 模块加载失败时不会自动切换模式；需要无界面运行时应显式指定 `--host=headless`。
+
+各平台权限、触发能力和排障方式见 [`docs/HEADLESS.md`](docs/HEADLESS.md)。
 
 ### 4. 启动并查询
 
@@ -245,6 +247,7 @@ selection-hook → 选区适配层 → 触发控制器 → PlatformHost → Gold
 更完整的模块边界、生命周期和状态机说明：
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/HEADLESS.md`](docs/HEADLESS.md)
 - [`docs/WINDOWS.md`](docs/WINDOWS.md)
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)
 

@@ -40,5 +40,6 @@
 
 - [`README.md`](README.md)：安装、使用、配置和发布入口。
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)：通用模块与数据流。
+- [`docs/HEADLESS.md`](docs/HEADLESS.md)：跨平台无界面宿主、权限和排障。
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)：通用开发说明。
 - [`docs/WINDOWS.md`](docs/WINDOWS.md)：Windows 原生实现、构建和排障。
