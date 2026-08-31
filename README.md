@@ -92,7 +92,7 @@ pnpm start:tray
 
 托盘图标、悬浮图标和 EXE 图标统一来自 [`resources/icon.ico`](resources/icon.ico)。悬浮控件使用无阴影的 per-pixel alpha 分层窗口：图标模式绘制抗锯齿圆角、白色底板、2px 灰蓝边框和内缩留白；圆点模式只绘制抗锯齿蓝色圆点。
 
-自定义快捷键至少包含一个修饰键和一个普通键，例如 `Ctrl+Alt+G`。保存时使用 Win32 `RegisterHotKey` 实际注册；如果组合已被系统或其他程序占用，会立即显示冲突提示并保留原设置。
+自定义快捷键至少包含一个修饰键和一个普通键，例如 `Ctrl+Alt+G` 或 `Shift+F8`。保存时使用 Win32 `RegisterHotKey` 实际注册；如果组合已被系统或其他程序占用，会立即显示冲突提示并保留原设置。快捷键可以从设置窗口移除；当前使用自定义快捷键触发时，移除会同时切换到立即触发。
 
 原生模块没有编译或加载失败时，程序会输出警告并安全回退到 headless。
 
@@ -130,7 +130,7 @@ pnpm start:tray
 
 | 字段 | 默认值 | 作用 |
 | --- | ---: | --- |
-| `schemaVersion` | `6` | 配置格式版本，用于一次性迁移默认值 |
+| `schemaVersion` | `7` | 配置格式版本，用于一次性迁移默认值 |
 | `enabled` | `true` | 是否启用选词监听 |
 | `triggerMode` | `immediate` | `immediate/icon/dot/ctrl/alt/shift/custom` |
 | `indicatorAction` | `click` | `click` 或 `hover`，两者互斥 |
@@ -141,7 +141,7 @@ pnpm start:tray
 | `hoverDelayMs` | `350` | 悬浮触发延迟 |
 | `iconSize` | `32` | 图标边长，可选 24/28/32/36/40 px |
 | `dotSize` | `16` | 圆点直径，可选 12/16/20/24/28 px |
-| `customShortcut` | `Ctrl+Alt+G` | Windows 全局组合快捷键 |
+| `customShortcut` | `Ctrl+Alt+G` | Windows 全局组合快捷键；空字符串表示未设置 |
 | `autoStart` | `false` | 当前用户开机启动 |
 
 环境变量仍可覆盖常用数值：

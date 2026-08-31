@@ -59,6 +59,7 @@ pnpm build:windows:setup
 | `native/win32/src/addon.cc` | Node-API 参数校验、导出和宿主生命周期 |
 | `native/win32/src/win32_host.*` | 消息线程、托盘、窗口、快捷键和注册表 |
 | `native/win32/resources.rc` | 编译默认图标 |
+| `resources/windows.manifest` | SEA 主程序权限、兼容性和系统控件视觉样式 |
 | `native/win32/binding.gyp` | node-gyp 源文件、编译选项和系统库 |
 | `src/platform/windows/windows-native-host.ts` | TypeScript 平台适配器 |
 
@@ -85,6 +86,15 @@ Win32 UI 线程不能直接调用 JS。窗口必须在创建它的线程销毁�
 ## 快捷键
 
 自定义快捷键至少包含一个修饰键和一个普通键。系统占用检测以实际 `RegisterHotKey` 结果为准；退出或离开 custom 模式时调用 `UnregisterHotKey`。
+
+- 捕获窗口使用普通系统标题栏和标准 `STATIC/EDIT/BUTTON` 控件；快捷键显示区保留自定义按键捕获逻辑，但不自绘界面；
+- 输入完整组合后先用独立的探测 ID 检查占用，保存时再次检查并正式注册，预览阶段不会替换当前快捷键；
+- 冲突、无效组合和注册异常使用行内状态提示，不再创建额外警告弹窗；
+- 裸 `Esc/Enter/Tab` 分别用于取消、保存和控件导航，带修饰键时仍作为快捷键候选；
+- 移除已保存快捷键时注销系统热键；当前使用 custom 触发时同时切换到 immediate；
+- 从设置入口保存只更新快捷键，从未设置的 custom 触发入口保存会同时启用 custom；
+- 全新配置仍预置 `Ctrl+Alt+G`，用户主动移除后以空字符串保存，不自动恢复默认值；
+- 弹窗在当前鼠标所在显示器的工作区居中，不保存窗口位置。
 
 修改 JS/C++ 原生接口时同步检查：
 
@@ -124,9 +134,9 @@ release/
 └ SelectionForward-<version>-windows-x64-setup.exe
 ```
 
-主程序使用 Node SEA，并包含应用和 `selection-hook` 的 JavaScript 代码；两个原生 `.node` 文件保留在外部。
+主程序使用 Node SEA，并包含应用和 `selection-hook` 的 JavaScript 代码；两个原生 `.node` 文件保留在外部。主程序清单保留 `asInvoker`，并启用 Common Controls v6 系统视觉样式。
 
-v1.0.1 重点修复原生 UI 线程退出时的生命周期保护，并修复自定义快捷键窗口在焦点落到按钮或静态控件后无法继续捕获组合键的问题。
+v1.0.1 重点修复原生 UI 线程退出时的生命周期保护，并完善自定义快捷键捕获、移除和标准系统控件界面。
 
 - Portable ZIP 解压后包含三个运行文件和 `portable.flag`，配置写入同目录 `data/config.json`。整个目录可移动，单独移动 EXE 不可运行；移动后需要重新启用一次开机启动，以刷新注册表中的绝对路径。
 - Setup EXE 使用 Inno Setup 6，把同样三个运行文件安装到当前用户目录，创建开始菜单快捷方式和卸载项，配置继续使用 `%APPDATA%`。
