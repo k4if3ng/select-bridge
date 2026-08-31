@@ -5,11 +5,20 @@ import { fileURLToPath } from 'node:url';
 
 import type {
   IndicatorOptions,
+  PlatformCapabilities,
   PlatformEvent,
   PlatformHost,
   PlatformState,
   ShortcutRegistrationResult,
 } from '../types.js';
+
+const WINDOWS_CAPABILITIES: PlatformCapabilities = {
+  hostMode: 'native',
+  indicator: true,
+  nativeShortcut: true,
+  portableShortcut: false,
+  autoStart: true,
+};
 
 interface NativeAddon {
   start(callback: (type: string, value?: string) => void): boolean;
@@ -38,6 +47,8 @@ interface NativeAddon {
 }
 
 export class WindowsNativeHost implements PlatformHost {
+  readonly capabilities = WINDOWS_CAPABILITIES;
+
   private constructor(private readonly addon: NativeAddon) {}
 
   static async load(): Promise<WindowsNativeHost> {
@@ -108,18 +119,18 @@ export class WindowsNativeHost implements PlatformHost {
 }
 
 function resolveNativeModulePath(): string {
-  if (process.env.SELECTION_FORWARD_NATIVE_PATH) {
-    return process.env.SELECTION_FORWARD_NATIVE_PATH;
+  if (process.env.SELECT_BRIDGE_NATIVE_PATH) {
+    return process.env.SELECT_BRIDGE_NATIVE_PATH;
   }
 
-  const packagedPath = resolve(dirname(process.execPath), 'selection_forward_win32_ui.node');
+  const packagedPath = resolve(dirname(process.execPath), 'select_bridge_win32_ui.node');
   if (existsSync(packagedPath)) {
     return packagedPath;
   }
   const currentDirectory = dirname(fileURLToPath(import.meta.url));
   return resolve(
     currentDirectory,
-    '../../../native/win32/build/Release/selection_forward_win32_ui.node',
+    '../../../native/win32/build/Release/select_bridge_win32_ui.node',
   );
 }
 

@@ -16,6 +16,7 @@ const SelectionHook = (SelectionHookModule.default ??
 export interface SelectionHookCallbacks {
   onSelection(event: SelectionEvent): void;
   onKeyDown(event: KeyEvent): void;
+  onKeyUp(event: KeyEvent): void;
   onError(error: Error): void;
 }
 
@@ -26,6 +27,7 @@ export class SelectionHookAdapter {
     this.hook = new SelectionHook();
     this.hook.on('text-selection', (data) => this.handleSelection(data));
     this.hook.on('key-down', (data) => this.handleKeyDown(data));
+    this.hook.on('key-up', (data) => this.handleKeyUp(data));
     this.hook.on('error', (error) => this.callbacks.onError(error));
   }
 
@@ -53,12 +55,22 @@ export class SelectionHookAdapter {
   }
 
   private handleKeyDown(data: KeyboardEventData): void {
-    this.callbacks.onKeyDown({
-      key: data.uniKey,
-      systemModifier: data.sys,
-      flags: data.flags,
-    });
+    this.callbacks.onKeyDown(toKeyEvent(data));
   }
+
+  private handleKeyUp(data: KeyboardEventData): void {
+    this.callbacks.onKeyUp(toKeyEvent(data));
+  }
+}
+
+function toKeyEvent(data: KeyboardEventData): KeyEvent {
+  return {
+    key: data.uniKey,
+    systemModifier: data.sys,
+    flags: data.flags,
+    virtualKey: data.vkCode,
+    scanCode: data.scanCode,
+  };
 }
 
 function describeMethod(method: TextSelectionData['method']): string {

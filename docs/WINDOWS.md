@@ -11,7 +11,9 @@ Windows 平台层提供：
 - 当前用户开机启动；
 - 无控制台的托盘版主程序。
 
-这些能力由 `native/win32/` 中的纯 Node-API/Win32 模块实现，程序启动时必须加载该模块。
+这些能力由 `native/win32/` 中的纯 Node-API/Win32 模块实现，native 宿主启动时必须加载该模块。
+
+Windows 默认使用完整 native 宿主，也可以通过 `--host=headless` 或 `--headless` 显式使用跨平台 `HeadlessHost`。native 模块加载失败时直接终止，不会隐式切换模式。
 
 ## 环境
 
@@ -36,7 +38,10 @@ pnpm build:native
 pnpm check:native
 
 # 启动托盘开发模式
-pnpm start
+pnpm start -- --host=native
+
+# 启动 Windows 无界面模式
+pnpm start -- --host=headless
 
 # 生成 Windows x64 发布目录
 pnpm build:windows
@@ -48,7 +53,7 @@ pnpm build:windows:portable
 pnpm build:windows:setup
 ```
 
-`pnpm start` 会启动真实托盘、全局选区钩子和系统快捷键，仅在需要交互验证时运行。
+Windows 上的 `pnpm start` 默认等价于 `--host=native`，会启动真实托盘、全局选区钩子和系统快捷键。headless 仍会启动真实全局选区钩子，但不加载 Win32 UI 模块、不创建托盘，也不使用 `RegisterHotKey`。仅在需要交互验证时运行。
 
 ## 原生结构
 
@@ -105,10 +110,10 @@ Win32 UI 线程不能直接调用 JS。窗口必须在创建它的线程销毁�
 
 ## 开机启动
 
-开发态使用 Node 可执行文件、脚本路径和 `--silent`。发布态直接注册 `SelectionForward.exe --silent`；发布版 EXE 使用 Windows GUI 子系统，因此不会显示控制台。
+开发态使用 Node 可执行文件、脚本路径和 `--silent`。发布态直接注册 `SelectBridge.exe --silent`；发布版 EXE 使用 Windows GUI 子系统，因此不会显示控制台。
 
 ```text
-SelectionForward.exe --silent
+SelectBridge.exe --silent
 ```
 
 Setup 与 Portable 共用一个开机启动值。最后启用开机启动的版本接管该值；任一版本关闭开机启动时，只删除指向自身可执行文件的值。Setup 卸载器也只清理指向安装目录的值，不影响 Portable 已登记的路径。
@@ -117,7 +122,7 @@ Setup 与 Portable 共用一个开机启动值。最后启用开机启动的版�
 
 Windows 运行时使用按用户隔离的命名管道作为轻量单实例锁，不增加常驻进程或第三方运行库。Setup、Portable 和开发态使用同一个实例通道：
 
-- 先启动的实例持有选区钩子和托盘；
+- 先启动的实例持有选区钩子及所选宿主；native 模式同时持有托盘；
 - 后启动的实例向现有实例报告自己的分发类型，然后以成功状态退出；
 - Setup 与 Portable 的配置文件继续分离，但不会同时监听选区；
 - 如果现有实例正在退出，新实例会短暂重试一次；通道存在但无响应时按单实例失败关闭，避免启动第二套全局钩子。
@@ -128,11 +133,13 @@ Windows 运行时使用按用户隔离的命名管道作为轻量单实例锁，
 
 ```text
 release/
-├ SelectionForward-<version>-windows-x64-portable.zip
-└ SelectionForward-<version>-windows-x64-setup.exe
+├ SelectBridge-<version>-windows-x64-portable.zip
+└ SelectBridge-<version>-windows-x64-setup.exe
 ```
 
 主程序使用 Node SEA，并包含应用和 `selection-hook` 的 JavaScript 代码；两个原生 `.node` 文件保留在外部。主程序清单保留 `asInvoker`，并启用 Common Controls v6 系统视觉样式。
+
+v1.1.0 将宿主模式与操作系统解耦：Windows 保留默认 native 托盘宿主，同时可显式使用跨平台 headless 宿主。
 
 v1.0.1 重点修复原生 UI 线程退出时的生命周期保护，并完善自定义快捷键捕获、移除和标准系统控件界面。
 
@@ -146,6 +153,6 @@ v1.0.1 重点修复原生 UI 线程退出时的生命周期保护，并完善自
 - 找不到 Node：检查当前 PowerShell 的 Node/FNM PATH，不要把本机绝对路径写入脚本。
 - 找不到 Python：确认 `python` 可通过当前 PowerShell 的 `PATH` 直接调用。
 - `.node` 无法覆盖：确认是否被运行中的 Node 进程锁定，不要终止来源不明的进程。
-- 原生模块加载失败：确认 `selection_forward_win32_ui.node` 已构建，且 Node 与模块架构一致。
+- 原生模块加载失败：确认 `select_bridge_win32_ui.node` 已构建，且 Node 与模块架构一致。
 - 快捷键冲突：查看 `RegisterHotKey` 返回的 Windows 错误码。
 - 没有 Setup EXE：安装 Inno Setup 6，或先使用 `pnpm build:windows:portable` 只生成便携包。

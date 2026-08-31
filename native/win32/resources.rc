@@ -1,3 +1,3 @@
 #include "resource.h"
 
-IDI_SELECTION_FORWARD ICON "..\\..\\resources\\icon.ico"
+IDI_SELECT_BRIDGE ICON "..\\..\\resources\\icon.ico"

@@ -4,7 +4,7 @@
 
 ```text
 selection-hook
-    │ text-selection / key-down / error
+    │ text-selection / key-down / key-up / error
     ▼
 SelectionHookAdapter
     ▼
@@ -29,7 +29,8 @@ system URL handler ── translation application
 | `src/config.ts` | 默认配置、清洗、环境变量、CLI 和持久化 |
 | `src/selection/` | 将 `selection-hook` 事件转换为内部类型 |
 | `src/core/trigger-controller.ts` | 稳定等待、过滤、去重和触发决策 |
-| `src/platform/` | Windows 托盘平台能力抽象 |
+| `src/core/portable-shortcut.ts` | headless 模式的组合键解析和修饰键状态匹配 |
+| `src/platform/` | 跨平台 headless 宿主与 Windows native 宿主 |
 | `src/targets/` | 翻译目标实现 |
 
 边界规则：
@@ -42,8 +43,9 @@ system URL handler ── translation application
 ## 生命周期
 
 ```text
-加载配置
-  → 创建平台宿主和触发控制器
+加载运行参数和配置
+  → 根据宿主模式与平台能力创建平台宿主
+  → 创建触发控制器
   → 启动平台宿主
   → 启动 selection-hook
   → 监听退出信号
@@ -82,7 +84,13 @@ Idle
 
 ## 平台抽象
 
-`PlatformHost` 提供生命周期、状态同步、指示器、系统协议打开、快捷键和开机启动能力。Windows 托盘宿主直接调用系统协议处理 API，避免每次查询额外创建中间进程。原生平台实现加载失败时应用明确终止，不启动缺少托盘和系统热键能力的降级实例。
+`PlatformHost` 提供生命周期、状态同步、指示器、系统协议打开、快捷键和开机启动能力，并通过 capabilities 声明实际支持项。操作系统和宿主模式是两个独立维度：`process.platform` 表示操作系统，`capabilities.hostMode` 表示当前宿主。运行参数先选择 `native` 或 `headless`，平台层再验证当前操作系统是否实现了该宿主。
+
+- `HeadlessHost` 可在 Windows、macOS 和 Linux 使用，不创建托盘或悬浮窗口；URL 交给通用系统打开器，自定义组合键由 `selection-hook` 的 `key-down`/`key-up` 事件匹配。
+- `WindowsNativeHost` 只在 Windows 提供，保留托盘、指示器、`RegisterHotKey` 冲突检测和开机启动。
+- Windows 默认选择 `native`，macOS/Linux 默认选择 `headless`；`--host`、`--headless`、`--native` 或 `SELECT_BRIDGE_HOST_MODE` 可以覆盖默认值。
+- 显式请求未实现的 `native` 宿主会直接报错。Windows native 模块加载失败时也明确终止，不做隐式模式切换；用户可显式选择 `--host=headless`。
+- HeadlessHost 遇到 `icon`/`dot` 配置时只为本次运行切换到 `immediate`，不覆盖持久化配置。
 
 具体平台的线程、系统 API、构建和发布方式放在对应平台文档中。Windows 见 [`WINDOWS.md`](WINDOWS.md)。
 

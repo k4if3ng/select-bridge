@@ -1,4 +1,4 @@
-import type { TriggerMode } from '../config.js';
+import type { HostMode, TriggerMode } from '../config.js';
 
 export interface IndicatorOptions {
   x?: number;
@@ -25,6 +25,14 @@ export interface ShortcutRegistrationResult {
   normalized: string;
 }
 
+export interface PlatformCapabilities {
+  hostMode: HostMode;
+  indicator: boolean;
+  nativeShortcut: boolean;
+  portableShortcut: boolean;
+  autoStart: boolean;
+}
+
 export type PlatformEvent =
   | { type: 'indicator-click' }
   | { type: 'indicator-hover' }
@@ -44,6 +52,7 @@ export type PlatformEvent =
   | { type: 'exit' };
 
 export interface PlatformHost {
+  readonly capabilities: PlatformCapabilities;
   start(onEvent: (event: PlatformEvent) => void): Promise<void>;
   stop(): Promise<void>;
   updateState(state: PlatformState): void;

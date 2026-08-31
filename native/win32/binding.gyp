@@ -1,7 +1,7 @@
 {
   "targets": [
     {
-      "target_name": "selection_forward_win32_ui",
+      "target_name": "select_bridge_win32_ui",
       "sources": [
         "src/addon.cc",
         "src/win32_host.cc",

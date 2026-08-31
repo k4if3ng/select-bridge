@@ -4,6 +4,7 @@ import { isTriggerMode, type AppConfig, type TriggerMode } from '../config.js';
 import type { PlatformEvent, PlatformHost } from '../platform/types.js';
 import type { KeyEvent, ScreenPoint, SelectionEvent } from '../selection/types.js';
 import type { TranslationTarget } from '../targets/types.js';
+import { PortableShortcutMatcher } from './portable-shortcut.js';
 
 interface Candidate {
   id: number;
@@ -17,6 +18,7 @@ export interface TriggerControllerOptions {
   config: AppConfig;
   platform: PlatformHost;
   target: TranslationTarget;
+  portableCustomShortcut: boolean;
   onConfigChange(config: AppConfig): void;
   onExitRequested(): void;
 }
@@ -30,6 +32,7 @@ export class TriggerController {
   private lastForwardedText = '';
   private lastForwardedProgram = '';
   private lastForwardedAt = 0;
+  private readonly portableShortcutMatcher = new PortableShortcutMatcher();
 
   constructor(private readonly options: TriggerControllerOptions) {
     this.config = options.config;
@@ -68,11 +71,24 @@ export class TriggerController {
 
   handleKeyDown(event: KeyEvent): void {
     const expectedKey = getModifierKey(this.config.triggerMode);
-    if (!expectedKey || event.key.toLowerCase() !== expectedKey.toLowerCase()) {
+    if (expectedKey && event.key.toLowerCase() === expectedKey.toLowerCase()) {
+      this.triggerCandidate('shortcut');
       return;
     }
 
-    this.triggerCandidate('shortcut');
+    if (
+      this.config.triggerMode === 'custom' &&
+      this.options.portableCustomShortcut &&
+      this.portableShortcutMatcher.keyDown(event.key, this.config.customShortcut)
+    ) {
+      this.triggerCandidate('shortcut');
+    }
+  }
+
+  handleKeyUp(event: KeyEvent): void {
+    if (this.options.portableCustomShortcut) {
+      this.portableShortcutMatcher.keyUp(event.key);
+    }
   }
 
   handlePlatformEvent(event: PlatformEvent): void {
@@ -156,6 +172,7 @@ export class TriggerController {
   replaceConfig(config: AppConfig): void {
     this.config = config;
     this.cancelCandidate();
+    this.portableShortcutMatcher.reset();
     this.options.platform.updateState({
       enabled: config.enabled,
       triggerMode: config.triggerMode,
@@ -170,6 +187,7 @@ export class TriggerController {
 
   dispose(): void {
     this.cancelCandidate();
+    this.portableShortcutMatcher.reset();
   }
 
   private settleCandidate(candidateId: number): void {

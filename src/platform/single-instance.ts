@@ -121,7 +121,7 @@ function getWindowsPipeName(): string {
 
   const identity = `${process.env.USERDOMAIN ?? ''}\\${username}`.toLowerCase();
   const userScope = createHash('sha256').update(identity).digest('hex').slice(0, 16);
-  return `\\\\.\\pipe\\selection-forward-${userScope}-v${INSTANCE_PROTOCOL_VERSION}`;
+  return `\\\\.\\pipe\\select-bridge-${userScope}-v${INSTANCE_PROTOCOL_VERSION}`;
 }
 
 function parseDistribution(value: string): DistributionMode | undefined {

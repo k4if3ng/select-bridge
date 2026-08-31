@@ -15,12 +15,12 @@
 
 namespace {
 
-constexpr wchar_t kOwnerClassName[] = L"SelectionForward.NativeHost";
-constexpr wchar_t kIndicatorClassName[] = L"SelectionForward.Indicator";
-constexpr wchar_t kShortcutClassName[] = L"SelectionForward.ShortcutCapture";
-constexpr wchar_t kTrayTooltip[] = L"Selection Forward";
+constexpr wchar_t kOwnerClassName[] = L"SelectBridge.NativeHost";
+constexpr wchar_t kIndicatorClassName[] = L"SelectBridge.Indicator";
+constexpr wchar_t kShortcutClassName[] = L"SelectBridge.ShortcutCapture";
+constexpr wchar_t kTrayTooltip[] = L"SelectBridge";
 constexpr wchar_t kRunKeyPath[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-constexpr wchar_t kRunValueName[] = L"SelectionForward";
+constexpr wchar_t kRunValueName[] = L"SelectBridge";
 
 constexpr UINT kTrayIconId = 1;
 constexpr UINT kTrayCallbackMessage = WM_APP + 1;
@@ -455,7 +455,7 @@ struct Win32Host::EventPayload {
 
 Win32Host::Win32Host(napi_env env, napi_value callback) : env_(env) {
   napi_value resource_name = nullptr;
-  if (napi_create_string_utf8(env_, "selection-forward-win32", NAPI_AUTO_LENGTH, &resource_name) !=
+  if (napi_create_string_utf8(env_, "select-bridge-win32", NAPI_AUTO_LENGTH, &resource_name) !=
       napi_ok) {
     return;
   }
@@ -779,7 +779,7 @@ bool Win32Host::RegisterWindowClasses() {
 bool Win32Host::CreateWindows() {
   owner_window_ = CreateWindowExW(WS_EX_TOOLWINDOW,
                                   kOwnerClassName,
-                                  L"Selection Forward",
+                                  L"SelectBridge",
                                   WS_OVERLAPPED,
                                   0,
                                   0,
@@ -833,7 +833,7 @@ bool Win32Host::AddTrayIcon() {
   tray_data_.uID = kTrayIconId;
   tray_data_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
   tray_data_.uCallbackMessage = kTrayCallbackMessage;
-  tray_data_.hIcon = LoadIconW(instance_, MAKEINTRESOURCEW(IDI_SELECTION_FORWARD));
+  tray_data_.hIcon = LoadIconW(instance_, MAKEINTRESOURCEW(IDI_SELECT_BRIDGE));
   if (!tray_data_.hIcon) {
     tray_data_.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
   }
@@ -1478,7 +1478,7 @@ void Win32Host::ApplyIndicator(const IndicatorRequest& request) {
   if (indicator_style_ == "icon") {
     const int icon_extent = std::max(8, size - std::max(6, size / 4));
     indicator_icon_ = static_cast<HICON>(LoadImageW(instance_,
-                                                    MAKEINTRESOURCEW(IDI_SELECTION_FORWARD),
+                                                    MAKEINTRESOURCEW(IDI_SELECT_BRIDGE),
                                                     IMAGE_ICON,
                                                     icon_extent,
                                                     icon_extent,

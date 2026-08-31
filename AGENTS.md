@@ -8,7 +8,7 @@
 - 使用 `pnpm`；不要用 npm 或 yarn 改写锁文件。
 - 原生构建直接使用环境 `PATH` 中的 `python`。
 - 除非用户要求，不主动启动全局选区钩子、托盘窗口或 Goldendict-ng。
-- 唯一运行方式为 Windows 托盘，不引入 Electron、WebView、Tauri 或额外常驻进程。
+- 所有平台支持显式使用无界面宿主；Windows 额外提供并默认使用完整托盘宿主。不引入 Electron、WebView、Tauri 或额外常驻进程。
 
 ## 代码边界
 
@@ -16,7 +16,17 @@
 - `src/core/` 保持平台无关；平台能力统一通过 `PlatformHost` 提供。
 - `src/targets/` 负责翻译目标和协议 URL，不负责选区状态。
 - `native/` 只实现平台能力，不承载业务规则。
-- Windows 运行必须加载原生平台模块；加载失败时明确终止，不做无界面降级。
+- Windows native 模式必须加载原生平台模块；加载失败时明确终止，不隐式降级。所有平台可显式使用 `HeadlessHost`，非 Windows 平台默认使用它。
+
+## Git 工作流
+
+- `main` 是唯一稳定、可发布分支；不建立长期 `dev` 分支，除非任务明确要求。
+- 日常改动从最新 `main` 创建短期 `feat/*`、`fix/*`、`docs/*` 或 `build/*` 分支。
+- 有代码修改任务时先确认当前分支和工作区；若当前在 `main`，先创建对应短期分支。
+- 开始修改前检查 `git status`，保留用户改动；不要直接重写或强推已共享的 `main`。
+- 仅在用户明确要求时直接向 `main` 提交；默认通过 Pull Request 合并。
+- 每个提交只包含一个主题，使用 Conventional Commits；Pull Request 合并前可压缩临时提交。
+- 发布前在 `main` 完成验证，使用不可移动的 SemVer 注释标签（例如 `v1.0.2`）。
 
 ## 修改要求
 

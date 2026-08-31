@@ -13,13 +13,24 @@ pnpm install
 pnpm build
 ```
 
-Windows 托盘开发模式：
+运行：
 
 ```powershell
+# 使用当前系统默认宿主：Windows 为 native，macOS/Linux 为 headless
 pnpm start
+
+# 所有平台显式使用无界面宿主
+pnpm start -- --host=headless
+
+# Windows 显式使用原生托盘宿主
+pnpm start -- --host=native
 ```
 
-`pnpm start` 会创建真实托盘、安装全局选区钩子，并可能唤起 Goldendict-ng。仅在需要交互验证时运行。
+`pnpm start` 会安装真实全局选区钩子，并可能唤起 Goldendict-ng。Windows 默认同时创建托盘和原生快捷键；仅在需要交互验证时运行。
+
+headless 宿主在 Windows、macOS 和 Linux 上行为一致：不创建托盘或指示器，`immediate`、修饰键和 `custom` 触发由 `selection-hook` 提供，查询继续通过 `goldendict://` 发送。无界面模式的自定义快捷键只做事件匹配，不提供系统占用检测。
+
+宿主模式不写入持久化配置。CLI `--host=native|headless` 的优先级高于别名 `--native`/`--headless`，CLI 又高于 `SELECT_BRIDGE_HOST_MODE`。非 Windows 平台显式请求 native 会立即报错；Windows native 加载失败也不会自动回退。
 
 平台专用工具链和命令放在对应平台文档中。Windows 见 [`WINDOWS.md`](WINDOWS.md)。
 

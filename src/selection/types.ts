@@ -16,4 +16,6 @@ export interface KeyEvent {
   key: string;
   systemModifier: boolean;
   flags: number;
+  virtualKey: number;
+  scanCode?: number;
 }

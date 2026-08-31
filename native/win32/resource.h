@@ -1,3 +1,3 @@
 #pragma once
 
-#define IDI_SELECTION_FORWARD 101
+#define IDI_SELECT_BRIDGE 101

@@ -13,19 +13,19 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const intermediateDirectory = join(projectRoot, 'build', 'windows');
 const appDirectory = join(intermediateDirectory, 'app');
 const portableRoot = join(intermediateDirectory, 'portable');
-const portableDirectory = join(portableRoot, 'SelectionForward');
+const portableDirectory = join(portableRoot, 'SelectBridge');
 const releaseDirectory = join(projectRoot, 'release');
 const bundledEntry = join(intermediateDirectory, 'main.cjs');
 const seaBlob = join(intermediateDirectory, 'sea-prep.blob');
 const seaConfig = join(intermediateDirectory, 'sea-config.json');
-const executablePath = join(appDirectory, 'SelectionForward.exe');
+const executablePath = join(appDirectory, 'SelectBridge.exe');
 const iconPath = join(projectRoot, 'resources', 'icon.ico');
 const manifestPath = join(projectRoot, 'resources', 'windows.manifest');
 const packageJson = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'));
 const version = packageJson.version;
 const portableArchive = join(
   releaseDirectory,
-  `SelectionForward-${version}-windows-x64-portable.zip`,
+  `SelectBridge-${version}-windows-x64-portable.zip`,
 );
 const nativeAddonPath = join(
   projectRoot,
@@ -33,7 +33,7 @@ const nativeAddonPath = join(
   'win32',
   'build',
   'Release',
-  'selection_forward_win32_ui.node',
+  'select_bridge_win32_ui.node',
 );
 const selectionHookNativePath = join(
   projectRoot,
@@ -69,9 +69,9 @@ await build({
   },
   define: {
     'import.meta.url': '__filename',
-    'process.env.SELECTION_FORWARD_PACKAGED': '"1"',
+    'process.env.SELECT_BRIDGE_PACKAGED': '"1"',
   },
-  banner: { js: '// Selection Forward — bundled for Node.js SEA' },
+  banner: { js: '// SelectBridge — bundled for Node.js SEA' },
 });
 
 await writeFile(
@@ -110,10 +110,10 @@ await rcedit(executablePath, {
   'file-version': version,
   'product-version': version,
   'version-string': {
-    FileDescription: 'Selection Forward',
-    InternalName: 'SelectionForward',
-    OriginalFilename: 'SelectionForward.exe',
-    ProductName: 'Selection Forward',
+    FileDescription: 'SelectBridge',
+    InternalName: 'SelectBridge',
+    OriginalFilename: 'SelectBridge.exe',
+    ProductName: 'SelectBridge',
   },
 });
 await inject(executablePath, 'NODE_SEA_BLOB', await readFile(seaBlob), {
@@ -121,14 +121,14 @@ await inject(executablePath, 'NODE_SEA_BLOB', await readFile(seaBlob), {
 });
 await setWindowsSubsystem(executablePath, 2);
 
-await copyFile(nativeAddonPath, join(appDirectory, 'selection_forward_win32_ui.node'));
+await copyFile(nativeAddonPath, join(appDirectory, 'select_bridge_win32_ui.node'));
 await copyFile(selectionHookNativePath, join(appDirectory, 'selection-hook.node'));
 
 await mkdir(portableDirectory, { recursive: true });
 for (const fileName of [
-  'SelectionForward.exe',
+  'SelectBridge.exe',
   'selection-hook.node',
-  'selection_forward_win32_ui.node',
+  'select_bridge_win32_ui.node',
 ]) {
   await copyFile(join(appDirectory, fileName), join(portableDirectory, fileName));
 }
@@ -145,7 +145,7 @@ console.log(`Portable archive created: ${portableArchive}`);
 function createPortableArchive(archivePath, sourceRoot) {
   const sevenZip = spawnSync(
     '7z.exe',
-    ['a', '-tzip', '-mx=9', '-mmt=on', archivePath, 'SelectionForward'],
+    ['a', '-tzip', '-mx=9', '-mmt=on', archivePath, 'SelectBridge'],
     { cwd: sourceRoot, encoding: 'utf8', stdio: 'inherit' },
   );
   if (!sevenZip.error) {
@@ -157,7 +157,7 @@ function createPortableArchive(archivePath, sourceRoot) {
 
   const tar = spawnSync(
     'tar.exe',
-    ['-a', '-c', '-f', archivePath, '-C', sourceRoot, 'SelectionForward'],
+    ['-a', '-c', '-f', archivePath, '-C', sourceRoot, 'SelectBridge'],
     { cwd: projectRoot, encoding: 'utf8', stdio: 'inherit' },
   );
   if (tar.error) {

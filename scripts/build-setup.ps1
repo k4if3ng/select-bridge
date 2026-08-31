@@ -4,7 +4,7 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $package = Get-Content (Join-Path $projectRoot 'package.json') -Raw | ConvertFrom-Json
 $sourceDirectory = Join-Path $projectRoot 'build/windows/app'
 $outputDirectory = Join-Path $projectRoot 'release'
-$installerScript = Join-Path $projectRoot 'installer/windows/SelectionForward.iss'
+$installerScript = Join-Path $projectRoot 'installer/windows/SelectBridge.iss'
 
 if (-not (Test-Path $sourceDirectory)) {
   throw 'Windows app staging is missing. Run pnpm build:windows first.'

@@ -1,5 +1,6 @@
 import { ConfigStore, loadRuntimeOptions, type AppConfig } from './config.js';
 import { TriggerController } from './core/trigger-controller.js';
+import { isPortableShortcut } from './core/portable-shortcut.js';
 import { getDistributionMode } from './distribution.js';
 import { acquireSingleInstance } from './platform/single-instance.js';
 import type { PlatformEvent, PlatformHost } from './platform/types.js';
@@ -14,7 +15,7 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
   if (!instanceGuard.isPrimary) {
     const active = instanceGuard.activeDistribution ?? 'unknown';
     console.log(
-      `[instance] Selection Forward 已在运行（${active}）；当前 ${distribution} 实例退出。`,
+      `[instance] SelectBridge 已在运行（${active}）；当前 ${distribution} 实例退出。`,
     );
     return;
   }
@@ -23,7 +24,8 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
   let config = await configStore.load();
   config = applyRuntimeOverrides(config, runtime.triggerMode, runtime.customShortcut);
 
-  const platform = await createPlatformHost();
+  const platform = await createPlatformHost(runtime.hostMode);
+  config = adaptConfigForPlatform(config, platform);
   const target = new GoldenDictTarget((url) => platform.openExternalUrl(url));
 
   let hook: SelectionHookAdapter | undefined;
@@ -53,6 +55,7 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
     config,
     platform,
     target,
+    portableCustomShortcut: platform.capabilities.portableShortcut,
     onConfigChange: (nextConfig) => {
       void persistConfig(nextConfig).catch((error: unknown) => {
         console.error('[config] 保存配置失败：', error);
@@ -71,7 +74,7 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
     );
   });
 
-  if (config.triggerMode === 'custom') {
+  if (config.triggerMode === 'custom' && platform.capabilities.nativeShortcut) {
     const registration = platform.registerShortcut(config.customShortcut);
     if (!registration.ok) {
       console.error(
@@ -83,7 +86,7 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
       config = { ...config, customShortcut: registration.normalized };
       controller.replaceConfig(config);
     }
-  } else {
+  } else if (platform.capabilities.nativeShortcut) {
     platform.registerShortcut('');
   }
   platform.updateState(toPlatformState(config));
@@ -91,6 +94,7 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
   hook = new SelectionHookAdapter({
     onSelection: (event) => controller.handleSelection(event),
     onKeyDown: (event) => controller.handleKeyDown(event),
+    onKeyUp: (event) => controller.handleKeyUp(event),
     onError: (error) => console.error('[selection-hook]', error),
   });
 
@@ -101,8 +105,13 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
   }
 
   console.log('选词转发已启动。');
-  console.log('运行模式：Windows 托盘');
+  console.log(
+    `运行模式：${platform.capabilities.hostMode === 'native' ? 'Windows 原生托盘' : `${process.platform} headless`}`,
+  );
   console.log(`触发方式：${config.triggerMode}`);
+  if (config.triggerMode === 'custom' && platform.capabilities.portableShortcut) {
+    console.log(`便携快捷键：${config.customShortcut}（事件匹配，不检测系统占用）`);
+  }
   console.log('查询协议：goldendict://<选词>?target=popup');
   console.log('按 Ctrl+C 退出。');
 
@@ -127,6 +136,10 @@ async function handlePlatformEvent(
   }
 
   if (event.type === 'toggle-auto-start') {
+    if (!platform.capabilities.autoStart) {
+      console.error('[startup] 当前无界面平台宿主不支持管理开机启动。');
+      return;
+    }
     const enabled = !getConfig().autoStart;
     const updated = { ...getConfig(), autoStart: enabled };
     const applied = await platform.setAutoStart(enabled);
@@ -143,6 +156,27 @@ async function handlePlatformEvent(
   }
 
   controller.handlePlatformEvent(event);
+}
+
+function adaptConfigForPlatform(config: AppConfig, platform: PlatformHost): AppConfig {
+  if (
+    !platform.capabilities.indicator &&
+    (config.triggerMode === 'icon' || config.triggerMode === 'dot')
+  ) {
+    console.warn(`[platform] ${config.triggerMode} 模式需要桌面指示器，本次运行改用 immediate。`);
+    return { ...config, triggerMode: 'immediate' };
+  }
+
+  if (
+    config.triggerMode === 'custom' &&
+    !platform.capabilities.nativeShortcut &&
+    (!platform.capabilities.portableShortcut || !isPortableShortcut(config.customShortcut))
+  ) {
+    console.warn(`[shortcut] ${JSON.stringify(config.customShortcut)} 不是有效组合，本次运行改用 immediate。`);
+    return { ...config, triggerMode: 'immediate' };
+  }
+
+  return config;
 }
 
 function applyRuntimeOverrides(

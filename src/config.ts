@@ -16,6 +16,9 @@ export const TRIGGER_MODES = [
 export type TriggerMode = (typeof TRIGGER_MODES)[number];
 export type IndicatorAction = 'click' | 'hover';
 
+export const HOST_MODES = ['native', 'headless'] as const;
+export type HostMode = (typeof HOST_MODES)[number];
+
 export interface AppConfig {
   schemaVersion: number;
   enabled: boolean;
@@ -35,6 +38,7 @@ export interface AppConfig {
 export interface RuntimeOptions {
   triggerMode?: TriggerMode;
   customShortcut?: string;
+  hostMode?: HostMode;
 }
 
 export const DEFAULT_CONFIG: Readonly<AppConfig> = {
@@ -89,15 +93,63 @@ export function loadRuntimeOptions(argv: string[]): RuntimeOptions {
     .find((argument) => argument.startsWith('--shortcut='))
     ?.slice('--shortcut='.length)
     .trim();
+  const hostValue = argv
+    .find((argument) => argument.startsWith('--host='))
+    ?.slice('--host='.length);
 
   return {
     triggerMode: isTriggerMode(triggerValue) ? triggerValue : undefined,
     customShortcut: customShortcut || undefined,
+    hostMode: resolveRuntimeHostMode(argv, hostValue),
   };
 }
 
 export function isTriggerMode(value: unknown): value is TriggerMode {
   return typeof value === 'string' && (TRIGGER_MODES as readonly string[]).includes(value);
+}
+
+export function isHostMode(value: unknown): value is HostMode {
+  return typeof value === 'string' && (HOST_MODES as readonly string[]).includes(value);
+}
+
+function resolveRuntimeHostMode(
+  argv: string[],
+  explicitValue: string | undefined,
+): HostMode | undefined {
+  if (explicitValue !== undefined) {
+    if (!isHostMode(explicitValue)) {
+      throw new Error(`无效的宿主模式：${explicitValue}；可选值为 native 或 headless。`);
+    }
+
+    return explicitValue;
+  }
+
+  const useHeadless = argv.includes('--headless');
+  const useNative = argv.includes('--native');
+  if (useHeadless && useNative) {
+    throw new Error('--headless 与 --native 不能同时使用。');
+  }
+
+  if (useHeadless) {
+    return 'headless';
+  }
+
+  if (useNative) {
+    return 'native';
+  }
+
+  const environmentValue = process.env.SELECT_BRIDGE_HOST_MODE;
+  if (!environmentValue) {
+    return undefined;
+  }
+
+  if (!isHostMode(environmentValue)) {
+    throw new Error(
+      `无效的 SELECT_BRIDGE_HOST_MODE：${environmentValue}；可选值为 native 或 headless。`,
+    );
+  }
+
+  return environmentValue;
 }
 
 function sanitizeConfig(value: unknown): AppConfig {
@@ -147,40 +199,40 @@ function sanitizeConfig(value: unknown): AppConfig {
 
 function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
   const customShortcut =
-    process.env.SELECTION_FORWARD_SHORTCUT?.trim() || config.customShortcut;
-  const requestedTriggerMode = isTriggerMode(process.env.SELECTION_FORWARD_TRIGGER_MODE)
-    ? process.env.SELECTION_FORWARD_TRIGGER_MODE
+    process.env.SELECT_BRIDGE_SHORTCUT?.trim() || config.customShortcut;
+  const requestedTriggerMode = isTriggerMode(process.env.SELECT_BRIDGE_TRIGGER_MODE)
+    ? process.env.SELECT_BRIDGE_TRIGGER_MODE
     : config.triggerMode;
   return {
     ...config,
     maxTextLength: getEnvironmentInteger(
-      'SELECTION_FORWARD_MAX_LENGTH',
+      'SELECT_BRIDGE_MAX_LENGTH',
       config.maxTextLength,
     ),
     dedupeWindowMs: getEnvironmentInteger(
-      'SELECTION_FORWARD_DEDUPE_MS',
+      'SELECT_BRIDGE_DEDUPE_MS',
       config.dedupeWindowMs,
     ),
     selectionStableMs: getEnvironmentInteger(
-      'SELECTION_FORWARD_STABLE_MS',
+      'SELECT_BRIDGE_STABLE_MS',
       config.selectionStableMs,
     ),
     indicatorTtlMs: getEnvironmentInteger(
-      'SELECTION_FORWARD_INDICATOR_TTL_MS',
+      'SELECT_BRIDGE_INDICATOR_TTL_MS',
       config.indicatorTtlMs,
     ),
     hoverDelayMs: getEnvironmentInteger(
-      'SELECTION_FORWARD_HOVER_MS',
+      'SELECT_BRIDGE_HOVER_MS',
       config.hoverDelayMs,
     ),
     iconSize: getBoundedEnvironmentInteger(
-      'SELECTION_FORWARD_ICON_SIZE',
+      'SELECT_BRIDGE_ICON_SIZE',
       config.iconSize,
       24,
       40,
     ),
     dotSize: getBoundedEnvironmentInteger(
-      'SELECTION_FORWARD_DOT_SIZE',
+      'SELECT_BRIDGE_DOT_SIZE',
       config.dotSize,
       12,
       28,
@@ -194,8 +246,8 @@ function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
 }
 
 function resolveConfigPath(): string {
-  if (process.env.SELECTION_FORWARD_CONFIG) {
-    return process.env.SELECTION_FORWARD_CONFIG;
+  if (process.env.SELECT_BRIDGE_CONFIG) {
+    return process.env.SELECT_BRIDGE_CONFIG;
   }
 
   if (process.platform === 'win32' && getDistributionMode() === 'portable') {
@@ -207,7 +259,7 @@ function resolveConfigPath(): string {
       ? process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming')
       : process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config');
 
-  return join(baseDirectory, 'selection-forward', 'config.json');
+  return join(baseDirectory, 'select-bridge', 'config.json');
 }
 
 function getEnvironmentInteger(name: string, fallback: number): number {
