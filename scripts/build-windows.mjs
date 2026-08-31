@@ -20,6 +20,7 @@ const seaBlob = join(intermediateDirectory, 'sea-prep.blob');
 const seaConfig = join(intermediateDirectory, 'sea-config.json');
 const executablePath = join(appDirectory, 'SelectionForward.exe');
 const iconPath = join(projectRoot, 'resources', 'icon.ico');
+const manifestPath = join(projectRoot, 'resources', 'windows.manifest');
 const packageJson = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'));
 const version = packageJson.version;
 const portableArchive = join(
@@ -105,6 +106,7 @@ if (seaResult.status !== 0) {
 await copyFile(process.execPath, executablePath);
 await rcedit(executablePath, {
   icon: iconPath,
+  'application-manifest': manifestPath,
   'file-version': version,
   'product-version': version,
   'version-string': {
