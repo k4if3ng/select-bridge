@@ -15,7 +15,6 @@ export const TRIGGER_MODES = [
 ] as const;
 export type TriggerMode = (typeof TRIGGER_MODES)[number];
 export type IndicatorAction = 'click' | 'hover';
-export type RuntimeMode = 'headless' | 'tray';
 
 export interface AppConfig {
   schemaVersion: number;
@@ -34,8 +33,6 @@ export interface AppConfig {
 }
 
 export interface RuntimeOptions {
-  mode: RuntimeMode;
-  silent: boolean;
   triggerMode?: TriggerMode;
   customShortcut?: string;
 }
@@ -87,10 +84,6 @@ export class ConfigStore {
 }
 
 export function loadRuntimeOptions(argv: string[]): RuntimeOptions {
-  const forceHeadless = argv.includes('--headless');
-  const silent = argv.includes('--silent');
-  const packagedExecutable = process.env.SELECTION_FORWARD_PACKAGED === '1';
-  const wantsTray = argv.includes('--tray') || silent || packagedExecutable;
   const triggerValue = argv.find((argument) => argument.startsWith('--trigger='))?.slice('--trigger='.length);
   const customShortcut = argv
     .find((argument) => argument.startsWith('--shortcut='))
@@ -98,8 +91,6 @@ export function loadRuntimeOptions(argv: string[]): RuntimeOptions {
     .trim();
 
   return {
-    mode: forceHeadless ? 'headless' : wantsTray ? 'tray' : 'headless',
-    silent,
     triggerMode: isTriggerMode(triggerValue) ? triggerValue : undefined,
     customShortcut: customShortcut || undefined,
   };

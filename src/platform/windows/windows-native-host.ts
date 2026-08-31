@@ -38,8 +38,6 @@ interface NativeAddon {
 }
 
 export class WindowsNativeHost implements PlatformHost {
-  readonly kind = 'tray' as const;
-
   private constructor(private readonly addon: NativeAddon) {}
 
   static async load(): Promise<WindowsNativeHost> {

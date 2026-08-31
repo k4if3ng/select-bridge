@@ -44,7 +44,6 @@ export type PlatformEvent =
   | { type: 'exit' };
 
 export interface PlatformHost {
-  readonly kind: 'headless' | 'tray';
   start(onEvent: (event: PlatformEvent) => void): Promise<void>;
   stop(): Promise<void>;
   updateState(state: PlatformState): void;

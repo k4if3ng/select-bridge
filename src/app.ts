@@ -23,16 +23,7 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
   let config = await configStore.load();
   config = applyRuntimeOverrides(config, runtime.triggerMode, runtime.customShortcut);
 
-  const platform = await createPlatformHost(runtime.mode);
-  if (
-    platform.kind === 'headless' &&
-    (config.triggerMode === 'icon' ||
-      config.triggerMode === 'dot' ||
-      config.triggerMode === 'custom')
-  ) {
-    console.warn(`[platform] headless 不显示 ${config.triggerMode}，本次运行改用 immediate。`);
-    config = { ...config, triggerMode: 'immediate' };
-  }
+  const platform = await createPlatformHost();
   const target = new GoldenDictTarget((url) => platform.openExternalUrl(url));
 
   let hook: SelectionHookAdapter | undefined;
@@ -110,7 +101,7 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
   }
 
   console.log('选词转发已启动。');
-  console.log(`运行模式：${platform.kind === 'tray' ? 'Windows 托盘' : 'headless'}`);
+  console.log('运行模式：Windows 托盘');
   console.log(`触发方式：${config.triggerMode}`);
   console.log('查询协议：goldendict://<选词>?target=popup');
   console.log('按 Ctrl+C 退出。');
