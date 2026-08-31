@@ -103,6 +103,9 @@ export class TriggerController {
         return;
       case 'set-trigger-mode':
         if (isTriggerMode(event.value)) {
+          if (event.value === 'custom' && !this.config.customShortcut) {
+            return;
+          }
           this.replaceConfig({ ...this.config, triggerMode: event.value });
         }
         return;
@@ -125,6 +128,20 @@ export class TriggerController {
         return;
       case 'set-custom-shortcut':
         this.replaceConfig({ ...this.config, customShortcut: event.value });
+        return;
+      case 'set-custom-shortcut-and-activate':
+        this.replaceConfig({
+          ...this.config,
+          customShortcut: event.value,
+          triggerMode: 'custom',
+        });
+        return;
+      case 'remove-custom-shortcut':
+        this.replaceConfig({
+          ...this.config,
+          customShortcut: '',
+          triggerMode: this.config.triggerMode === 'custom' ? 'immediate' : this.config.triggerMode,
+        });
         return;
       case 'open-settings':
         return;

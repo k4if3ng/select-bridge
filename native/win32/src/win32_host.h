@@ -48,6 +48,15 @@ class Win32Host {
   struct TrayStateRequest;
   struct EventPayload;
   struct ShortcutRequest;
+  enum class ShortcutCaptureState {
+    current,
+    waiting,
+    valid,
+    same,
+    conflict,
+    invalid,
+    error,
+  };
 
   static DWORD WINAPI ThreadEntry(void* parameter);
   static LRESULT CALLBACK OwnerWindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
@@ -64,13 +73,22 @@ class Win32Host {
   void RemoveTrayIcon();
   void ShowTrayMenu();
   void HandleTrayCommand(unsigned int command);
-  void ShowShortcutCapture();
+  void ShowShortcutCapture(bool activate_after_save);
   void CloseShortcutCapture();
+  void LayoutShortcutCapture();
+  void RecreateShortcutFonts();
+  void ApplyShortcutFonts();
+  void UpdateShortcutCapture(ShortcutCaptureState state,
+                             const std::string& preview = {});
+  void CaptureShortcutKey(UINT virtual_key);
+  void SaveCapturedShortcut();
+  void RemoveCapturedShortcut();
 
   void ApplyIndicator(const IndicatorRequest& request);
   void PaintIndicator(HWND window);
   void BeginIndicatorHoverTracking();
   void EndIndicatorHoverTracking();
+  ShortcutResult ProbeShortcut(const std::string& shortcut) const;
   ShortcutResult ApplyShortcut(const std::string& shortcut);
   void ClearShortcut();
 
@@ -90,10 +108,15 @@ class Win32Host {
   HWND owner_window_ = nullptr;
   HWND indicator_window_ = nullptr;
   HWND shortcut_window_ = nullptr;
-  HWND shortcut_value_label_ = nullptr;
+  HWND shortcut_instructions_ = nullptr;
+  HWND shortcut_field_label_ = nullptr;
+  HWND shortcut_value_edit_ = nullptr;
+  HWND shortcut_status_label_ = nullptr;
+  HWND shortcut_remove_button_ = nullptr;
+  HWND shortcut_save_button_ = nullptr;
+  HWND shortcut_cancel_button_ = nullptr;
   HFONT shortcut_font_ = nullptr;
   HFONT shortcut_value_font_ = nullptr;
-  HBRUSH shortcut_background_brush_ = nullptr;
   NOTIFYICONDATAW tray_data_{};
   bool tray_added_ = false;
   UINT taskbar_created_message_ = 0;
@@ -106,6 +129,9 @@ class Win32Host {
   int dot_size_ = 16;
   std::string custom_shortcut_ = "Ctrl+Alt+G";
   std::string captured_shortcut_;
+  std::string shortcut_preview_;
+  ShortcutCaptureState shortcut_capture_state_ = ShortcutCaptureState::current;
+  bool shortcut_activate_after_save_ = false;
   bool hotkey_registered_ = false;
   UINT hotkey_modifiers_ = 0;
   UINT hotkey_virtual_key_ = 0;

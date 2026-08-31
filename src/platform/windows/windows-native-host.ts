@@ -133,6 +133,7 @@ function toPlatformEvent(type: string, value?: string): PlatformEvent | undefine
     case 'toggle-auto-start':
     case 'shortcut':
     case 'open-settings':
+    case 'remove-custom-shortcut':
     case 'exit':
       return { type };
     case 'set-trigger-mode':
@@ -140,6 +141,7 @@ function toPlatformEvent(type: string, value?: string): PlatformEvent | undefine
     case 'set-icon-size':
     case 'set-dot-size':
     case 'set-custom-shortcut':
+    case 'set-custom-shortcut-and-activate':
     case 'shortcut-conflict':
     case 'native-error':
       return { type, value: value ?? '' };

@@ -159,11 +159,14 @@ function applyRuntimeOverrides(
   triggerMode: AppConfig['triggerMode'] | undefined,
   customShortcut: string | undefined,
 ): AppConfig {
-  return {
+  const updated: AppConfig = {
     ...config,
     ...(triggerMode ? { triggerMode } : {}),
     ...(customShortcut ? { customShortcut } : {}),
   };
+  return updated.triggerMode === 'custom' && !updated.customShortcut
+    ? { ...updated, triggerMode: 'immediate' }
+    : updated;
 }
 
 function toPlatformState(config: AppConfig): Parameters<PlatformHost['updateState']>[0] {

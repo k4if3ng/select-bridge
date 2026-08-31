@@ -35,6 +35,8 @@ export type PlatformEvent =
   | { type: 'set-icon-size'; value: string }
   | { type: 'set-dot-size'; value: string }
   | { type: 'set-custom-shortcut'; value: string }
+  | { type: 'set-custom-shortcut-and-activate'; value: string }
+  | { type: 'remove-custom-shortcut' }
   | { type: 'shortcut' }
   | { type: 'shortcut-conflict'; value: string }
   | { type: 'native-error'; value: string }

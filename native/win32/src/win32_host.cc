@@ -29,6 +29,7 @@ constexpr UINT kHideIndicatorMessage = WM_APP + 3;
 constexpr UINT kUpdateTrayMessage = WM_APP + 4;
 constexpr UINT kStopMessage = WM_APP + 5;
 constexpr UINT kRegisterShortcutMessage = WM_APP + 6;
+constexpr UINT kEditSetCueBannerMessage = 0x1501;
 constexpr UINT_PTR kHoverTimerId = 1;
 constexpr int kHotkeyId = 0x5346;
 constexpr int kHotkeyProbeId = 0x5347;
@@ -56,8 +57,13 @@ constexpr UINT kCommandDotSize16 = 1511;
 constexpr UINT kCommandDotSize20 = 1512;
 constexpr UINT kCommandDotSize24 = 1513;
 constexpr UINT kCommandDotSize28 = 1514;
-constexpr UINT kShortcutSaveButton = 1600;
-constexpr UINT kShortcutCancelButton = 1601;
+constexpr UINT kShortcutInstructions = 1600;
+constexpr UINT kShortcutFieldLabel = 1601;
+constexpr UINT kShortcutValueEdit = 1602;
+constexpr UINT kShortcutStatusLabel = 1603;
+constexpr UINT kShortcutRemoveButton = 1604;
+constexpr UINT kShortcutCancelButton = 1605;
+constexpr UINT kShortcutSaveButton = 1606;
 
 constexpr COLORREF kIndicatorColor = RGB(31, 111, 235);
 constexpr COLORREF kIndicatorBackgroundColor = RGB(255, 255, 255);
@@ -315,6 +321,51 @@ std::string CaptureHotkey(UINT virtual_key) {
   return key_name.empty() ? std::string{} : shortcut + key_name;
 }
 
+bool IsModifierVirtualKey(UINT virtual_key) {
+  return virtual_key == VK_CONTROL || virtual_key == VK_LCONTROL ||
+         virtual_key == VK_RCONTROL || virtual_key == VK_MENU ||
+         virtual_key == VK_LMENU || virtual_key == VK_RMENU ||
+         virtual_key == VK_SHIFT || virtual_key == VK_LSHIFT ||
+         virtual_key == VK_RSHIFT || virtual_key == VK_LWIN ||
+         virtual_key == VK_RWIN;
+}
+
+bool IsVirtualKeyDown(int virtual_key) {
+  return (GetAsyncKeyState(virtual_key) & 0x8000) != 0;
+}
+
+bool HasShortcutModifierDown() {
+  return IsVirtualKeyDown(VK_CONTROL) || IsVirtualKeyDown(VK_LCONTROL) ||
+         IsVirtualKeyDown(VK_RCONTROL) || IsVirtualKeyDown(VK_MENU) ||
+         IsVirtualKeyDown(VK_LMENU) || IsVirtualKeyDown(VK_RMENU) ||
+         IsVirtualKeyDown(VK_SHIFT) || IsVirtualKeyDown(VK_LSHIFT) ||
+         IsVirtualKeyDown(VK_RSHIFT) || IsVirtualKeyDown(VK_LWIN) ||
+         IsVirtualKeyDown(VK_RWIN);
+}
+
+std::string CaptureModifierPreview() {
+  std::string preview;
+  if (IsVirtualKeyDown(VK_CONTROL) || IsVirtualKeyDown(VK_LCONTROL) ||
+      IsVirtualKeyDown(VK_RCONTROL)) {
+    preview += "Ctrl+";
+  }
+  if (IsVirtualKeyDown(VK_MENU) || IsVirtualKeyDown(VK_LMENU) ||
+      IsVirtualKeyDown(VK_RMENU)) {
+    preview += "Alt+";
+  }
+  if (IsVirtualKeyDown(VK_SHIFT) || IsVirtualKeyDown(VK_LSHIFT) ||
+      IsVirtualKeyDown(VK_RSHIFT)) {
+    preview += "Shift+";
+  }
+  if (IsVirtualKeyDown(VK_LWIN) || IsVirtualKeyDown(VK_RWIN)) {
+    preview += "Win+";
+  }
+  if (!preview.empty()) {
+    preview += "...";
+  }
+  return preview;
+}
+
 std::wstring Utf8ToWideLocal(const std::string& value) {
   if (value.empty()) return {};
   const int size = MultiByteToWideChar(
@@ -354,7 +405,9 @@ void ResizeAndCenterWindow(HWND window,
 
   const int width = bounds.right - bounds.left;
   const int height = bounds.bottom - bounds.top;
-  HMONITOR monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+  POINT cursor{};
+  GetCursorPos(&cursor);
+  HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
   MONITORINFO monitor_info{};
   monitor_info.cbSize = sizeof(monitor_info);
   int x = CW_USEDEFAULT;
@@ -717,7 +770,7 @@ bool Win32Host::RegisterWindowClasses() {
   shortcut_class.lpfnWndProc = ShortcutWindowProc;
   shortcut_class.lpszClassName = kShortcutClassName;
   shortcut_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-  shortcut_class.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+  shortcut_class.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
 
   return RegisterClassExW(&owner_class) && RegisterClassExW(&indicator_class) &&
          RegisterClassExW(&shortcut_class);
@@ -828,7 +881,11 @@ void Win32Host::ShowTrayMenu() {
   AppendMenuW(trigger_menu, MF_STRING, kCommandCtrl, L"按 Ctrl 触发");
   AppendMenuW(trigger_menu, MF_STRING, kCommandAlt, L"按 Alt 触发");
   AppendMenuW(trigger_menu, MF_STRING, kCommandShift, L"按 Shift 触发");
-  AppendMenuW(trigger_menu, MF_STRING, kCommandCustom, L"自定义快捷键");
+  AppendMenuW(trigger_menu,
+              MF_STRING,
+              kCommandCustom,
+              custom_shortcut_.empty() ? L"自定义快捷键（未设置）"
+                                       : L"自定义快捷键");
 
   const UINT checked_command = trigger_mode_ == "icon"      ? kCommandIcon
                                : trigger_mode_ == "dot"     ? kCommandDot
@@ -902,8 +959,10 @@ void Win32Host::ShowTrayMenu() {
               reinterpret_cast<UINT_PTR>(dot_size_menu),
               L"圆点大小");
 
-  const std::wstring shortcut_label =
-      L"设置自定义快捷键…（" + Utf8ToWideLocal(custom_shortcut_) + L"）";
+  const std::wstring shortcut_label = custom_shortcut_.empty()
+                                            ? L"设置自定义快捷键…"
+                                            : L"设置自定义快捷键…（" +
+                                                  Utf8ToWideLocal(custom_shortcut_) + L"）";
   AppendMenuW(menu, MF_STRING, kCommandSetShortcut, shortcut_label.c_str());
   AppendMenuW(menu,
               MF_STRING | (auto_start_ ? MF_CHECKED : MF_UNCHECKED),
@@ -953,14 +1012,22 @@ void Win32Host::HandleTrayCommand(unsigned int command) {
       SendEvent("set-trigger-mode", "shift");
       break;
     case kCommandCustom: {
+      if (custom_shortcut_.empty()) {
+        ShowShortcutCapture(true);
+        break;
+      }
       const ShortcutResult result = ApplyShortcut(custom_shortcut_);
       if (result.ok) {
         SendEvent("set-trigger-mode", "custom");
       } else {
-        MessageBoxW(owner_window_,
-                    L"该快捷键无效或已被其他应用占用。请先设置新的快捷键。",
-                    L"Selection Forward",
-                    MB_OK | MB_ICONWARNING);
+        ShowShortcutCapture(true);
+        const ShortcutCaptureState failure_state =
+            result.error_code == ERROR_INVALID_PARAMETER
+                ? ShortcutCaptureState::invalid
+                : result.error_code == ERROR_HOTKEY_ALREADY_REGISTERED
+                      ? ShortcutCaptureState::conflict
+                      : ShortcutCaptureState::error;
+        UpdateShortcutCapture(failure_state, custom_shortcut_);
       }
       break;
     }
@@ -981,7 +1048,7 @@ void Win32Host::HandleTrayCommand(unsigned int command) {
     case kCommandDotSize24: SendEvent("set-dot-size", "24"); break;
     case kCommandDotSize28: SendEvent("set-dot-size", "28"); break;
     case kCommandSetShortcut:
-      ShowShortcutCapture();
+      ShowShortcutCapture(false);
       break;
     case kCommandToggleAutoStart:
       SendEvent("toggle-auto-start");
@@ -992,17 +1059,20 @@ void Win32Host::HandleTrayCommand(unsigned int command) {
   }
 }
 
-void Win32Host::ShowShortcutCapture() {
+void Win32Host::ShowShortcutCapture(bool activate_after_save) {
   if (shortcut_window_) {
+    shortcut_activate_after_save_ = shortcut_activate_after_save_ || activate_after_save;
     ShowWindow(shortcut_window_, SW_RESTORE);
     SetForegroundWindow(shortcut_window_);
-    SetFocus(shortcut_window_);
+    SetFocus(shortcut_value_edit_ ? shortcut_value_edit_ : shortcut_window_);
     return;
   }
 
+  shortcut_activate_after_save_ = activate_after_save;
   captured_shortcut_.clear();
-  constexpr DWORD extended_style =
-      WS_EX_DLGMODALFRAME | WS_EX_TOOLWINDOW | WS_EX_CONTROLPARENT;
+  shortcut_preview_ = custom_shortcut_;
+  shortcut_capture_state_ = ShortcutCaptureState::current;
+  constexpr DWORD extended_style = WS_EX_CONTROLPARENT;
   constexpr DWORD window_style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
   shortcut_window_ = CreateWindowExW(extended_style,
                                      kShortcutClassName,
@@ -1010,8 +1080,8 @@ void Win32Host::ShowShortcutCapture() {
                                      window_style,
                                      CW_USEDEFAULT,
                                      CW_USEDEFAULT,
-                                     500,
-                                     280,
+                                     440,
+                                     236,
                                      owner_window_,
                                      nullptr,
                                      instance_,
@@ -1021,123 +1091,351 @@ void Win32Host::ShowShortcutCapture() {
   }
 
   const UINT dpi = GetWindowDpiCompat(shortcut_window_);
-  ResizeAndCenterWindow(shortcut_window_, 460, 220, window_style, extended_style, dpi);
-  const auto scaled = [dpi](int value) { return ScaleForDpi(value, dpi); };
+  ResizeAndCenterWindow(shortcut_window_, 400, 176, window_style, extended_style, dpi);
+  shortcut_instructions_ = CreateWindowExW(
+      0,
+      L"STATIC",
+      L"按下新的组合快捷键，然后选择“保存”。",
+      WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX,
+      0,
+      0,
+      0,
+      0,
+      shortcut_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kShortcutInstructions)),
+      instance_,
+      nullptr);
+  shortcut_field_label_ = CreateWindowExW(
+      0,
+      L"STATIC",
+      L"自定义快捷键",
+      WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX,
+      0,
+      0,
+      0,
+      0,
+      shortcut_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kShortcutFieldLabel)),
+      instance_,
+      nullptr);
+  shortcut_value_edit_ = CreateWindowExW(
+      WS_EX_CLIENTEDGE,
+      L"EDIT",
+      L"",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_CENTER | ES_READONLY | ES_AUTOHSCROLL,
+      0,
+      0,
+      0,
+      0,
+      shortcut_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kShortcutValueEdit)),
+      instance_,
+      nullptr);
+  shortcut_status_label_ = CreateWindowExW(
+      0,
+      L"STATIC",
+      L"",
+      WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX,
+      0,
+      0,
+      0,
+      0,
+      shortcut_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kShortcutStatusLabel)),
+      instance_,
+      nullptr);
+  shortcut_remove_button_ = CreateWindowExW(
+      0,
+      L"BUTTON",
+      L"移除",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+      0,
+      0,
+      0,
+      0,
+      shortcut_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kShortcutRemoveButton)),
+      instance_,
+      nullptr);
+  shortcut_cancel_button_ = CreateWindowExW(
+      0,
+      L"BUTTON",
+      L"取消",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+      0,
+      0,
+      0,
+      0,
+      shortcut_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kShortcutCancelButton)),
+      instance_,
+      nullptr);
+  shortcut_save_button_ = CreateWindowExW(
+      0,
+      L"BUTTON",
+      L"保存",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
+      0,
+      0,
+      0,
+      0,
+      shortcut_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kShortcutSaveButton)),
+      instance_,
+      nullptr);
 
-  shortcut_font_ = CreateFontW(-MulDiv(10, static_cast<int>(dpi), 72),
-                               0,
-                               0,
-                               0,
-                               FW_NORMAL,
-                               FALSE,
-                               FALSE,
-                               FALSE,
-                               DEFAULT_CHARSET,
-                               OUT_DEFAULT_PRECIS,
-                               CLIP_DEFAULT_PRECIS,
-                               CLEARTYPE_QUALITY,
-                               DEFAULT_PITCH | FF_DONTCARE,
-                               L"Microsoft YaHei UI");
-  shortcut_value_font_ = CreateFontW(-MulDiv(13, static_cast<int>(dpi), 72),
-                                     0,
-                                     0,
-                                     0,
-                                     FW_SEMIBOLD,
-                                     FALSE,
-                                     FALSE,
-                                     FALSE,
-                                     DEFAULT_CHARSET,
-                                     OUT_DEFAULT_PRECIS,
-                                     CLIP_DEFAULT_PRECIS,
-                                     CLEARTYPE_QUALITY,
-                                     DEFAULT_PITCH | FF_DONTCARE,
-                                     L"Microsoft YaHei UI");
-  shortcut_background_brush_ = CreateSolidBrush(RGB(255, 255, 255));
-  HFONT font = shortcut_font_
-                   ? shortcut_font_
-                   : static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-  HWND instructions = CreateWindowExW(0,
-                                      L"STATIC",
-                                      L"按下新的组合快捷键，松开后会自动更新。\r\n示例：Ctrl+Alt+G、Shift+F8、Alt+Space；按 Esc 取消。",
-                                      WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
-                                      scaled(24),
-                                      scaled(16),
-                                      scaled(412),
-                                      scaled(42),
-                                      shortcut_window_,
-                                      nullptr,
-                                      instance_,
-                                      nullptr);
-  HWND current_label = CreateWindowExW(0,
-                                       L"STATIC",
-                                       L"当前组合",
-                                       WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
-                                       scaled(24),
-                                       scaled(68),
-                                       scaled(412),
-                                       scaled(18),
-                                       shortcut_window_,
-                                       nullptr,
-                                       instance_,
-                                       nullptr);
-  shortcut_value_label_ = CreateWindowExW(WS_EX_CLIENTEDGE,
-                                          L"STATIC",
-                                          Utf8ToWideLocal(custom_shortcut_).c_str(),
-                                          WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE,
-                                          scaled(24),
-                                          scaled(90),
-                                          scaled(412),
-                                          scaled(54),
-                                          shortcut_window_,
-                                          nullptr,
-                                          instance_,
-                                          nullptr);
-  HWND save_button = CreateWindowExW(0,
-                                     L"BUTTON",
-                                     L"保存",
-                                     WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
-                                     scaled(268),
-                                     scaled(170),
-                                     scaled(90),
-                                     scaled(34),
-                                     shortcut_window_,
-                                     reinterpret_cast<HMENU>(
-                                         static_cast<INT_PTR>(kShortcutSaveButton)),
-                                     instance_,
-                                     nullptr);
-  HWND cancel_button = CreateWindowExW(0,
-                                       L"BUTTON",
-                                       L"取消",
-                                       WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                                       scaled(372),
-                                       scaled(170),
-                                       scaled(90),
-                                       scaled(34),
-                                       shortcut_window_,
-                                       reinterpret_cast<HMENU>(
-                                           static_cast<INT_PTR>(kShortcutCancelButton)),
-                                       instance_,
-                                       nullptr);
-  for (HWND control : {instructions, current_label, shortcut_value_label_, save_button, cancel_button}) {
-    SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+  if (!shortcut_instructions_ || !shortcut_field_label_ || !shortcut_value_edit_ ||
+      !shortcut_status_label_ || !shortcut_remove_button_ ||
+      !shortcut_cancel_button_ || !shortcut_save_button_) {
+    CloseShortcutCapture();
+    return;
   }
-  SendMessageW(shortcut_value_label_,
-               WM_SETFONT,
-               reinterpret_cast<WPARAM>(shortcut_value_font_ ? shortcut_value_font_ : font),
-               TRUE);
+
+  RecreateShortcutFonts();
+  ApplyShortcutFonts();
+  LayoutShortcutCapture();
+  SendMessageW(shortcut_value_edit_,
+               kEditSetCueBannerMessage,
+               TRUE,
+               reinterpret_cast<LPARAM>(L"按下组合快捷键"));
+  UpdateShortcutCapture(ShortcutCaptureState::current, custom_shortcut_);
 
   ShowWindow(shortcut_window_, SW_SHOW);
   SetForegroundWindow(shortcut_window_);
-  SetFocus(shortcut_window_);
+  SetFocus(shortcut_value_edit_);
 }
 
 void Win32Host::CloseShortcutCapture() {
   if (shortcut_window_) {
     DestroyWindow(shortcut_window_);
-    shortcut_window_ = nullptr;
-    shortcut_value_label_ = nullptr;
   }
-  captured_shortcut_.clear();
+}
+
+void Win32Host::LayoutShortcutCapture() {
+  if (!shortcut_window_) {
+    return;
+  }
+  const UINT dpi = GetWindowDpiCompat(shortcut_window_);
+  const auto scaled = [dpi](int value) { return ScaleForDpi(value, dpi); };
+  const auto position = [&](HWND control, int x, int y, int width, int height) {
+    if (control) {
+      SetWindowPos(control,
+                   nullptr,
+                   scaled(x),
+                   scaled(y),
+                   scaled(width),
+                   scaled(height),
+                   SWP_NOACTIVATE | SWP_NOZORDER);
+    }
+  };
+  position(shortcut_instructions_, 24, 10, 352, 22);
+  position(shortcut_field_label_, 24, 40, 352, 18);
+  position(shortcut_value_edit_, 24, 64, 352, 36);
+  position(shortcut_status_label_, 24, 106, 352, 18);
+  position(shortcut_remove_button_, 24, 134, 80, 30);
+  position(shortcut_cancel_button_, 204, 134, 80, 30);
+  position(shortcut_save_button_, 296, 134, 80, 30);
+}
+
+void Win32Host::RecreateShortcutFonts() {
+  if (!shortcut_window_) {
+    return;
+  }
+  if (shortcut_font_) {
+    DeleteObject(shortcut_font_);
+    shortcut_font_ = nullptr;
+  }
+  if (shortcut_value_font_) {
+    DeleteObject(shortcut_value_font_);
+    shortcut_value_font_ = nullptr;
+  }
+
+  const UINT dpi = GetWindowDpiCompat(shortcut_window_);
+  NONCLIENTMETRICSW metrics{};
+  metrics.cbSize = sizeof(metrics);
+  using SystemParametersInfoForDpiFunction =
+      BOOL(WINAPI*)(UINT, UINT, PVOID, UINT, UINT);
+  auto* system_parameters_for_dpi =
+      reinterpret_cast<SystemParametersInfoForDpiFunction>(
+          GetProcAddress(GetModuleHandleW(L"user32.dll"),
+                         "SystemParametersInfoForDpi"));
+  const BOOL loaded = system_parameters_for_dpi
+                          ? system_parameters_for_dpi(SPI_GETNONCLIENTMETRICS,
+                                                      sizeof(metrics),
+                                                      &metrics,
+                                                      0,
+                                                      dpi)
+                          : SystemParametersInfoW(SPI_GETNONCLIENTMETRICS,
+                                                  sizeof(metrics),
+                                                  &metrics,
+                                                  0);
+  if (!loaded) {
+    GetObjectW(GetStockObject(DEFAULT_GUI_FONT), sizeof(metrics.lfMessageFont),
+               &metrics.lfMessageFont);
+  }
+
+  LOGFONTW body_font = metrics.lfMessageFont;
+  LOGFONTW value_font = metrics.lfMessageFont;
+  value_font.lfHeight = -MulDiv(11, static_cast<int>(dpi), 72);
+  value_font.lfWeight = FW_SEMIBOLD;
+  shortcut_font_ = CreateFontIndirectW(&body_font);
+  shortcut_value_font_ = CreateFontIndirectW(&value_font);
+}
+
+void Win32Host::ApplyShortcutFonts() {
+  HFONT body_font = shortcut_font_
+                        ? shortcut_font_
+                        : static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+  for (HWND control : {shortcut_instructions_,
+                       shortcut_field_label_,
+                       shortcut_status_label_,
+                       shortcut_remove_button_,
+                       shortcut_cancel_button_,
+                       shortcut_save_button_}) {
+    if (control) {
+      SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(body_font), TRUE);
+    }
+  }
+  if (shortcut_value_edit_) {
+    HFONT value_font = shortcut_value_font_ ? shortcut_value_font_ : body_font;
+    SendMessageW(shortcut_value_edit_,
+                 WM_SETFONT,
+                 reinterpret_cast<WPARAM>(value_font),
+                 TRUE);
+  }
+}
+
+void Win32Host::UpdateShortcutCapture(ShortcutCaptureState state,
+                                      const std::string& preview) {
+  shortcut_capture_state_ = state;
+  shortcut_preview_ = preview;
+  captured_shortcut_ = state == ShortcutCaptureState::valid ? preview : std::string{};
+  if (shortcut_value_edit_) {
+    const std::wstring value = Utf8ToWideLocal(shortcut_preview_);
+    SetWindowTextW(shortcut_value_edit_, value.c_str());
+    SendMessageW(shortcut_value_edit_, EM_SETSEL, 0, 0);
+  }
+
+  const wchar_t* status_text = custom_shortcut_.empty()
+                                   ? L"尚未设置自定义快捷键"
+                                   : trigger_mode_ == "custom"
+                                         ? L"当前快捷键已生效"
+                                         : L"快捷键已保存，当前未启用";
+  switch (shortcut_capture_state_) {
+    case ShortcutCaptureState::waiting:
+      status_text = L"继续按下一个字母、数字或功能键";
+      break;
+    case ShortcutCaptureState::valid:
+      status_text = L"快捷键可以使用";
+      break;
+    case ShortcutCaptureState::same:
+      status_text = L"该快捷键与当前设置相同";
+      break;
+    case ShortcutCaptureState::conflict:
+      status_text = L"快捷键已被其他程序占用";
+      break;
+    case ShortcutCaptureState::invalid:
+      status_text = L"该组合不是有效的全局快捷键";
+      break;
+    case ShortcutCaptureState::error:
+      status_text = L"快捷键注册失败";
+      break;
+    case ShortcutCaptureState::current:
+      break;
+  }
+  if (shortcut_status_label_) {
+    SetWindowTextW(shortcut_status_label_, status_text);
+  }
+  if (shortcut_save_button_) {
+    EnableWindow(shortcut_save_button_, state == ShortcutCaptureState::valid);
+  }
+  if (shortcut_remove_button_) {
+    EnableWindow(shortcut_remove_button_, !custom_shortcut_.empty());
+  }
+}
+
+void Win32Host::CaptureShortcutKey(UINT virtual_key) {
+  if (IsModifierVirtualKey(virtual_key)) {
+    UpdateShortcutCapture(ShortcutCaptureState::waiting, CaptureModifierPreview());
+    return;
+  }
+
+  if (!HasShortcutModifierDown()) {
+    UpdateShortcutCapture(ShortcutCaptureState::invalid, VirtualKeyName(virtual_key));
+    return;
+  }
+
+  const std::string candidate = CaptureHotkey(virtual_key);
+  if (candidate.empty()) {
+    UpdateShortcutCapture(ShortcutCaptureState::invalid, VirtualKeyName(virtual_key));
+    return;
+  }
+
+  const ShortcutResult probe = ProbeShortcut(candidate);
+  const std::string preview = probe.normalized.empty() ? candidate : probe.normalized;
+  if (!probe.ok) {
+    const ShortcutCaptureState failure_state =
+        probe.error_code == ERROR_INVALID_PARAMETER
+            ? ShortcutCaptureState::invalid
+            : probe.error_code == ERROR_HOTKEY_ALREADY_REGISTERED
+                  ? ShortcutCaptureState::conflict
+                  : ShortcutCaptureState::error;
+    UpdateShortcutCapture(failure_state, preview);
+    if (failure_state == ShortcutCaptureState::error) {
+      SendEvent("native-error", "ShortcutProbe:" + std::to_string(probe.error_code));
+    }
+    return;
+  }
+
+  const ParsedHotkey configured = ParseHotkey(custom_shortcut_);
+  if (configured.ok && configured.normalized == probe.normalized) {
+    UpdateShortcutCapture(ShortcutCaptureState::same, probe.normalized);
+    return;
+  }
+  UpdateShortcutCapture(ShortcutCaptureState::valid, probe.normalized);
+}
+
+void Win32Host::SaveCapturedShortcut() {
+  if (shortcut_capture_state_ != ShortcutCaptureState::valid ||
+      captured_shortcut_.empty()) {
+    return;
+  }
+
+  const bool should_register = shortcut_activate_after_save_ || trigger_mode_ == "custom";
+  ShortcutResult result = should_register ? ApplyShortcut(captured_shortcut_)
+                                          : ProbeShortcut(captured_shortcut_);
+  if (!result.ok) {
+    const ShortcutCaptureState failure_state =
+        result.error_code == ERROR_INVALID_PARAMETER
+            ? ShortcutCaptureState::invalid
+            : result.error_code == ERROR_HOTKEY_ALREADY_REGISTERED
+                  ? ShortcutCaptureState::conflict
+                  : ShortcutCaptureState::error;
+    UpdateShortcutCapture(failure_state, captured_shortcut_);
+    if (failure_state == ShortcutCaptureState::error) {
+      SendEvent("native-error", "RegisterHotKey:" + std::to_string(result.error_code));
+    }
+    return;
+  }
+
+  custom_shortcut_ = result.normalized;
+  if (!should_register) {
+    ClearShortcut();
+  }
+  SendEvent(shortcut_activate_after_save_ ? "set-custom-shortcut-and-activate"
+                                         : "set-custom-shortcut",
+            result.normalized);
+  CloseShortcutCapture();
+}
+
+void Win32Host::RemoveCapturedShortcut() {
+  if (custom_shortcut_.empty()) {
+    return;
+  }
+  ClearShortcut();
+  custom_shortcut_.clear();
+  SendEvent("remove-custom-shortcut");
+  CloseShortcutCapture();
 }
 
 void Win32Host::ApplyIndicator(const IndicatorRequest& request) {
@@ -1361,14 +1659,8 @@ void Win32Host::EndIndicatorHoverTracking() {
   indicator_tracking_ = false;
 }
 
-Win32Host::ShortcutResult Win32Host::ApplyShortcut(const std::string& shortcut) {
+Win32Host::ShortcutResult Win32Host::ProbeShortcut(const std::string& shortcut) const {
   ShortcutResult result;
-  if (shortcut.empty()) {
-    ClearShortcut();
-    result.ok = true;
-    return result;
-  }
-
   const ParsedHotkey parsed = ParseHotkey(shortcut);
   if (!parsed.ok) {
     result.error_code = ERROR_INVALID_PARAMETER;
@@ -1390,13 +1682,48 @@ Win32Host::ShortcutResult Win32Host::ApplyShortcut(const std::string& shortcut) 
     return result;
   }
   UnregisterHotKey(owner_window_, kHotkeyProbeId);
+  result.ok = true;
+  return result;
+}
 
+Win32Host::ShortcutResult Win32Host::ApplyShortcut(const std::string& shortcut) {
+  ShortcutResult result;
+  if (shortcut.empty()) {
+    ClearShortcut();
+    result.ok = true;
+    return result;
+  }
+
+  result = ProbeShortcut(shortcut);
+  if (!result.ok) {
+    return result;
+  }
+
+  const ParsedHotkey parsed = ParseHotkey(result.normalized);
+  if (hotkey_registered_ && parsed.modifiers == hotkey_modifiers_ &&
+      parsed.virtual_key == hotkey_virtual_key_) {
+    return result;
+  }
+
+  const bool had_registered_hotkey = hotkey_registered_;
+  const UINT previous_modifiers = hotkey_modifiers_;
+  const UINT previous_virtual_key = hotkey_virtual_key_;
   ClearShortcut();
   if (!RegisterHotKey(owner_window_,
                       kHotkeyId,
                       parsed.modifiers | MOD_NOREPEAT,
                       parsed.virtual_key)) {
+    result.ok = false;
     result.error_code = GetLastError();
+    if (had_registered_hotkey &&
+        RegisterHotKey(owner_window_,
+                       kHotkeyId,
+                       previous_modifiers | MOD_NOREPEAT,
+                       previous_virtual_key)) {
+      hotkey_registered_ = true;
+      hotkey_modifiers_ = previous_modifiers;
+      hotkey_virtual_key_ = previous_virtual_key;
+    }
     return result;
   }
 
@@ -1404,7 +1731,6 @@ Win32Host::ShortcutResult Win32Host::ApplyShortcut(const std::string& shortcut) 
   hotkey_modifiers_ = parsed.modifiers;
   hotkey_virtual_key_ = parsed.virtual_key;
   custom_shortcut_ = parsed.normalized;
-  result.ok = true;
   return result;
 }
 
@@ -1499,6 +1825,12 @@ LRESULT CALLBACK Win32Host::OwnerWindowProc(HWND window,
       host->dot_size_ = request->dot_size;
       host->custom_shortcut_ = request->custom_shortcut;
       if (host->trigger_mode_ == "custom") {
+        if (host->custom_shortcut_.empty()) {
+          host->ClearShortcut();
+          host->trigger_mode_ = "immediate";
+          host->SendEvent("set-trigger-mode", "immediate");
+          return 0;
+        }
         const ShortcutResult result = host->ApplyShortcut(host->custom_shortcut_);
         if (!result.ok) {
           host->SendEvent("shortcut-conflict",
@@ -1552,68 +1884,121 @@ LRESULT CALLBACK Win32Host::ShortcutWindowProc(HWND window,
   }
 
   switch (message) {
-    case WM_ERASEBKGND: {
-      RECT client{};
-      GetClientRect(window, &client);
-      FillRect(reinterpret_cast<HDC>(wparam), &client, host->shortcut_background_brush_);
-      return 1;
-    }
-    case WM_CTLCOLORSTATIC: {
-      HDC dc = reinterpret_cast<HDC>(wparam);
-      SetBkMode(dc, TRANSPARENT);
-      SetTextColor(dc, RGB(45, 55, 72));
-      return reinterpret_cast<LRESULT>(host->shortcut_background_brush_);
-    }
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN: {
-      if (wparam == VK_ESCAPE) {
+      const UINT virtual_key = static_cast<UINT>(wparam);
+      const bool has_modifier = HasShortcutModifierDown();
+      if (virtual_key == VK_F4 && IsVirtualKeyDown(VK_MENU)) {
         host->CloseShortcutCapture();
         return 0;
       }
-      const std::string captured = CaptureHotkey(static_cast<UINT>(wparam));
-      if (!captured.empty()) {
-        host->captured_shortcut_ = captured;
-        const std::wstring label = Utf8ToWideLocal(captured);
-        SetWindowTextW(host->shortcut_value_label_, label.c_str());
+      if (virtual_key == VK_ESCAPE && !has_modifier) {
+        host->CloseShortcutCapture();
+        return 0;
       }
+      if (virtual_key == VK_RETURN && !has_modifier) {
+        host->SaveCapturedShortcut();
+        return 0;
+      }
+      if (virtual_key == VK_TAB && !has_modifier) {
+        HWND focus = GetFocus();
+        const HWND controls[] = {host->shortcut_value_edit_,
+                                 host->shortcut_remove_button_,
+                                 host->shortcut_cancel_button_,
+                                 host->shortcut_save_button_};
+        size_t current = ARRAYSIZE(controls) - 1;
+        for (size_t index = 0; index < ARRAYSIZE(controls); ++index) {
+          if (controls[index] == focus) {
+            current = index;
+            break;
+          }
+        }
+        for (size_t offset = 1; offset <= ARRAYSIZE(controls); ++offset) {
+          HWND next = controls[(current + offset) % ARRAYSIZE(controls)];
+          if (next && IsWindowVisible(next) && IsWindowEnabled(next)) {
+            SetFocus(next);
+            break;
+          }
+        }
+        return 0;
+      }
+      if (virtual_key == VK_SPACE && !has_modifier) {
+        HWND focus = GetFocus();
+        if (focus == host->shortcut_remove_button_ ||
+            focus == host->shortcut_save_button_ ||
+            focus == host->shortcut_cancel_button_) {
+          SendMessageW(focus, BM_CLICK, 0, 0);
+          return 0;
+        }
+      }
+      host->CaptureShortcutKey(virtual_key);
       return 0;
     }
     case WM_GETDLGCODE:
       return DLGC_WANTALLKEYS;
     case WM_COMMAND:
       if (LOWORD(wparam) == kShortcutSaveButton) {
-        const std::string shortcut = host->captured_shortcut_.empty()
-                                         ? host->custom_shortcut_
-                                         : host->captured_shortcut_;
-        const ShortcutResult result = host->ApplyShortcut(shortcut);
-        if (!result.ok) {
-          const std::wstring message_text =
-              L"快捷键无效或已被占用。Windows 错误码：" +
-              std::to_wstring(result.error_code);
-          MessageBoxW(window,
-                      message_text.c_str(),
-                      L"无法注册快捷键",
-                      MB_OK | MB_ICONWARNING);
-          SetFocus(window);
-          return 0;
-        }
-        host->SendEvent("set-custom-shortcut", result.normalized);
-        host->SendEvent("set-trigger-mode", "custom");
-        host->CloseShortcutCapture();
+        host->SaveCapturedShortcut();
         return 0;
       }
       if (LOWORD(wparam) == kShortcutCancelButton) {
         host->CloseShortcutCapture();
         return 0;
       }
+      if (LOWORD(wparam) == kShortcutRemoveButton) {
+        host->RemoveCapturedShortcut();
+        return 0;
+      }
       break;
+    case WM_DPICHANGED: {
+      const auto* suggested = reinterpret_cast<RECT*>(lparam);
+      SetWindowPos(window,
+                   nullptr,
+                   suggested->left,
+                   suggested->top,
+                   suggested->right - suggested->left,
+                   suggested->bottom - suggested->top,
+                   SWP_NOACTIVATE | SWP_NOZORDER);
+      host->RecreateShortcutFonts();
+      host->ApplyShortcutFonts();
+      host->LayoutShortcutCapture();
+      RedrawWindow(window,
+                   nullptr,
+                   nullptr,
+                   RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+      return 0;
+    }
+    case WM_SETTINGCHANGE:
+      host->RecreateShortcutFonts();
+      host->ApplyShortcutFonts();
+      RedrawWindow(window,
+                   nullptr,
+                   nullptr,
+                   RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+      return 0;
+    case WM_SYSCOLORCHANGE:
+    case WM_THEMECHANGED:
+      RedrawWindow(window,
+                   nullptr,
+                   nullptr,
+                   RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+      return 0;
     case WM_CLOSE:
       host->CloseShortcutCapture();
       return 0;
     case WM_DESTROY:
       host->shortcut_window_ = nullptr;
-      host->shortcut_value_label_ = nullptr;
+      host->shortcut_instructions_ = nullptr;
+      host->shortcut_field_label_ = nullptr;
+      host->shortcut_value_edit_ = nullptr;
+      host->shortcut_status_label_ = nullptr;
+      host->shortcut_remove_button_ = nullptr;
+      host->shortcut_save_button_ = nullptr;
+      host->shortcut_cancel_button_ = nullptr;
       host->captured_shortcut_.clear();
+      host->shortcut_preview_.clear();
+      host->shortcut_capture_state_ = ShortcutCaptureState::current;
+      host->shortcut_activate_after_save_ = false;
       if (host->shortcut_font_) {
         DeleteObject(host->shortcut_font_);
         host->shortcut_font_ = nullptr;
@@ -1621,10 +2006,6 @@ LRESULT CALLBACK Win32Host::ShortcutWindowProc(HWND window,
       if (host->shortcut_value_font_) {
         DeleteObject(host->shortcut_value_font_);
         host->shortcut_value_font_ = nullptr;
-      }
-      if (host->shortcut_background_brush_) {
-        DeleteObject(host->shortcut_background_brush_);
-        host->shortcut_background_brush_ = nullptr;
       }
       return 0;
   }

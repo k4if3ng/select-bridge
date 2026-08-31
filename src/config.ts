@@ -41,7 +41,7 @@ export interface RuntimeOptions {
 }
 
 export const DEFAULT_CONFIG: Readonly<AppConfig> = {
-  schemaVersion: 6,
+  schemaVersion: 7,
   enabled: true,
   triggerMode: 'immediate',
   indicatorAction: 'click',
@@ -114,39 +114,52 @@ function sanitizeConfig(value: unknown): AppConfig {
     return { ...DEFAULT_CONFIG };
   }
 
-  const migrateDefaults = value.schemaVersion !== DEFAULT_CONFIG.schemaVersion;
+  const migratePerformanceDefaults =
+    typeof value.schemaVersion !== 'number' || value.schemaVersion < 6;
+  const customShortcut =
+    typeof value.customShortcut === 'string'
+      ? value.customShortcut.trim()
+      : DEFAULT_CONFIG.customShortcut;
+  const requestedTriggerMode = isTriggerMode(value.triggerMode)
+    ? value.triggerMode
+    : DEFAULT_CONFIG.triggerMode;
   return {
     schemaVersion: DEFAULT_CONFIG.schemaVersion,
     enabled: getBoolean(value.enabled, DEFAULT_CONFIG.enabled),
-    triggerMode: isTriggerMode(value.triggerMode) ? value.triggerMode : DEFAULT_CONFIG.triggerMode,
+    triggerMode:
+      requestedTriggerMode === 'custom' && !customShortcut
+        ? 'immediate'
+        : requestedTriggerMode,
     indicatorAction:
       value.indicatorAction === 'hover' || value.indicatorAction === 'click'
         ? value.indicatorAction
         : DEFAULT_CONFIG.indicatorAction,
     maxTextLength: getPositiveInteger(value.maxTextLength, DEFAULT_CONFIG.maxTextLength),
     dedupeWindowMs: getPositiveInteger(value.dedupeWindowMs, DEFAULT_CONFIG.dedupeWindowMs),
-    selectionStableMs: migrateDefaults
+    selectionStableMs: migratePerformanceDefaults
       ? getMigratedTiming(value.selectionStableMs, 120, DEFAULT_CONFIG.selectionStableMs)
       : getPositiveInteger(value.selectionStableMs, DEFAULT_CONFIG.selectionStableMs),
     indicatorTtlMs: getPositiveInteger(value.indicatorTtlMs, DEFAULT_CONFIG.indicatorTtlMs),
-    hoverDelayMs: migrateDefaults
+    hoverDelayMs: migratePerformanceDefaults
       ? getMigratedTiming(value.hoverDelayMs, 450, DEFAULT_CONFIG.hoverDelayMs)
       : getPositiveInteger(value.hoverDelayMs, DEFAULT_CONFIG.hoverDelayMs),
-    iconSize: migrateDefaults
+    iconSize: migratePerformanceDefaults
       ? getMigratedBoundedInteger(value.iconSize, 40, DEFAULT_CONFIG.iconSize, 24, 40)
       : getBoundedInteger(value.iconSize, DEFAULT_CONFIG.iconSize, 24, 40),
-    dotSize: migrateDefaults
+    dotSize: migratePerformanceDefaults
       ? getMigratedBoundedInteger(value.dotSize, 24, DEFAULT_CONFIG.dotSize, 12, 28)
       : getBoundedInteger(value.dotSize, DEFAULT_CONFIG.dotSize, 12, 28),
-    customShortcut:
-      typeof value.customShortcut === 'string' && value.customShortcut.trim()
-        ? value.customShortcut.trim()
-        : DEFAULT_CONFIG.customShortcut,
+    customShortcut,
     autoStart: getBoolean(value.autoStart, DEFAULT_CONFIG.autoStart),
   };
 }
 
 function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
+  const customShortcut =
+    process.env.SELECTION_FORWARD_SHORTCUT?.trim() || config.customShortcut;
+  const requestedTriggerMode = isTriggerMode(process.env.SELECTION_FORWARD_TRIGGER_MODE)
+    ? process.env.SELECTION_FORWARD_TRIGGER_MODE
+    : config.triggerMode;
   return {
     ...config,
     maxTextLength: getEnvironmentInteger(
@@ -181,11 +194,11 @@ function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
       12,
       28,
     ),
-    customShortcut:
-      process.env.SELECTION_FORWARD_SHORTCUT?.trim() || config.customShortcut,
-    triggerMode: isTriggerMode(process.env.SELECTION_FORWARD_TRIGGER_MODE)
-      ? process.env.SELECTION_FORWARD_TRIGGER_MODE
-      : config.triggerMode,
+    customShortcut,
+    triggerMode:
+      requestedTriggerMode === 'custom' && !customShortcut
+        ? 'immediate'
+        : requestedTriggerMode,
   };
 }
 
