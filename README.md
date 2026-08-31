@@ -268,4 +268,4 @@ selection-hook → 选区适配层 → 触发控制器 → PlatformHost → Gold
 
 ## 许可证
 
-本项目使用 ISC License（SPDX：`ISC`）。
+本项目使用 MIT License（SPDX：`MIT`），详见根目录 [`LICENSE`](LICENSE) 文件。
