@@ -8,7 +8,7 @@
 - 使用 `pnpm`；不要用 npm 或 yarn 改写锁文件。
 - 原生构建直接使用环境 `PATH` 中的 `python`。
 - 除非用户要求，不主动启动全局选区钩子、托盘窗口或 Goldendict-ng。
-- 默认运行方式保持 headless，不引入 Electron、WebView、Tauri 或额外常驻进程。
+- 唯一运行方式为 Windows 托盘，不引入 Electron、WebView、Tauri 或额外常驻进程。
 
 ## 代码边界
 
@@ -16,7 +16,7 @@
 - `src/core/` 保持平台无关；平台能力统一通过 `PlatformHost` 提供。
 - `src/targets/` 负责翻译目标和协议 URL，不负责选区状态。
 - `native/` 只实现平台能力，不承载业务规则。
-- headless 路径不能加载平台 UI 模块；不支持的 UI 模式应安全降级。
+- Windows 运行必须加载原生平台模块；加载失败时明确终止，不做无界面降级。
 
 ## 修改要求
 

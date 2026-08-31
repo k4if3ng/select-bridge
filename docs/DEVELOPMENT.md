@@ -13,13 +13,13 @@ pnpm install
 pnpm build
 ```
 
-最低占用模式：
+Windows 托盘开发模式：
 
 ```powershell
 pnpm start
 ```
 
-`pnpm start` 会安装真实全局选区钩子，并可能唤起 Goldendict-ng。仅在需要交互验证时运行。
+`pnpm start` 会创建真实托盘、安装全局选区钩子，并可能唤起 Goldendict-ng。仅在需要交互验证时运行。
 
 平台专用工具链和命令放在对应平台文档中。Windows 见 [`WINDOWS.md`](WINDOWS.md)。
 
@@ -41,7 +41,6 @@ pnpm start
 新增触发方式时同步更新：
 
 - `TRIGGER_MODES`
-- headless 降级规则
 - `TriggerController`
 - `PlatformEvent`
 - 相关平台实现

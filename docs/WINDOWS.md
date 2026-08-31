@@ -11,7 +11,7 @@ Windows 平台层提供：
 - 当前用户开机启动；
 - 无控制台的托盘版主程序。
 
-这些能力由 `native/win32/` 中的纯 Node-API/Win32 模块实现。headless 模式不会加载该模块。
+这些能力由 `native/win32/` 中的纯 Node-API/Win32 模块实现，程序启动时必须加载该模块。
 
 ## 环境
 
@@ -36,7 +36,7 @@ pnpm build:native
 pnpm check:native
 
 # 启动托盘开发模式
-pnpm start:tray
+pnpm start
 
 # 生成 Windows x64 发布目录
 pnpm build:windows
@@ -48,7 +48,7 @@ pnpm build:windows:portable
 pnpm build:windows:setup
 ```
 
-`start:tray` 会启动真实托盘、全局选区钩子和系统快捷键，仅在需要交互验证时运行。
+`pnpm start` 会启动真实托盘、全局选区钩子和系统快捷键，仅在需要交互验证时运行。
 
 ## 原生结构
 
@@ -146,6 +146,6 @@ v1.0.1 重点修复原生 UI 线程退出时的生命周期保护，并完善自
 - 找不到 Node：检查当前 PowerShell 的 Node/FNM PATH，不要把本机绝对路径写入脚本。
 - 找不到 Python：确认 `python` 可通过当前 PowerShell 的 `PATH` 直接调用。
 - `.node` 无法覆盖：确认是否被运行中的 Node 进程锁定，不要终止来源不明的进程。
-- 托盘回退 headless：确认 `selection_forward_win32_ui.node` 已构建，且 Node 与模块架构一致。
+- 原生模块加载失败：确认 `selection_forward_win32_ui.node` 已构建，且 Node 与模块架构一致。
 - 快捷键冲突：查看 `RegisterHotKey` 返回的 Windows 错误码。
 - 没有 Setup EXE：安装 Inno Setup 6，或先使用 `pnpm build:windows:portable` 只生成便携包。

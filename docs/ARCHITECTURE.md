@@ -29,7 +29,7 @@ system URL handler ── translation application
 | `src/config.ts` | 默认配置、清洗、环境变量、CLI 和持久化 |
 | `src/selection/` | 将 `selection-hook` 事件转换为内部类型 |
 | `src/core/trigger-controller.ts` | 稳定等待、过滤、去重和触发决策 |
-| `src/platform/` | headless 与平台能力抽象 |
+| `src/platform/` | Windows 托盘平台能力抽象 |
 | `src/targets/` | 翻译目标实现 |
 
 边界规则：
@@ -82,7 +82,7 @@ Idle
 
 ## 平台抽象
 
-`PlatformHost` 提供生命周期、状态同步、指示器、系统协议打开、快捷键和开机启动等可选能力。Windows 托盘宿主直接调用系统协议处理 API，避免每次查询额外创建中间进程；`HeadlessHost` 使用通用命令回退，不创建 UI、系统热键或启动项。平台实现加载失败时，应用回退到 headless。
+`PlatformHost` 提供生命周期、状态同步、指示器、系统协议打开、快捷键和开机启动能力。Windows 托盘宿主直接调用系统协议处理 API，避免每次查询额外创建中间进程。原生平台实现加载失败时应用明确终止，不启动缺少托盘和系统热键能力的降级实例。
 
 具体平台的线程、系统 API、构建和发布方式放在对应平台文档中。Windows 见 [`WINDOWS.md`](WINDOWS.md)。
 

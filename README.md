@@ -6,10 +6,7 @@
 goldendict://<URL 编码的选词>?target=popup
 ```
 
-项目保留两种启动方式：
-
-- **headless**：默认方式，不加载 GUI、托盘或 Win32 UI 模块，保持最低常驻占用。
-- **Windows 托盘**：按需动态加载轻量 Win32 Node-API 模块，提供托盘、悬浮图标/小圆点、自定义全局快捷键和开机启动。
+项目只提供 Windows 托盘运行方式，通过轻量 Win32 Node-API 模块提供托盘、悬浮图标/圆点、自定义全局快捷键和开机启动。
 
 项目不使用 Electron、WebView 或 Python 运行时。Python 只在构建原生模块时由环境 `PATH` 提供给 `node-gyp`。
 
@@ -43,24 +40,6 @@ pnpm install
 pnpm build
 ```
 
-## Headless 启动
-
-```shell
-pnpm start
-```
-
-这是默认、占用最低的运行方式，只启动 Node、`selection-hook` 和触发状态机。默认触发方式为 `immediate`，选择文字稳定 60ms 后立即发送到 Goldendict-ng。
-
-也可以直接指定快捷键触发：
-
-```shell
-pnpm start -- --trigger=ctrl
-pnpm start -- --trigger=alt
-pnpm start -- --trigger=shift
-```
-
-如果配置文件中保存的是 `icon`、`dot` 或 `custom`，headless 模式会在当前运行中自动降级为 `immediate`，不会因为没有原生 UI/全局热键而丢失查询。
-
 ## Windows 托盘启动
 
 先构建原生模块：
@@ -71,10 +50,18 @@ pnpm build:native
 
 构建脚本通过环境 `PATH` 查找 `python`，并将其传给 `node-gyp`。
 
-然后启动托盘模式：
+然后启动：
 
 ```shell
-pnpm start:tray
+pnpm start
+```
+
+也可以为本次运行覆盖触发方式：
+
+```shell
+pnpm start -- --trigger=ctrl
+pnpm start -- --trigger=alt
+pnpm start -- --trigger=shift
 ```
 
 托盘菜单目前支持：
@@ -94,7 +81,7 @@ pnpm start:tray
 
 自定义快捷键至少包含一个修饰键和一个普通键，例如 `Ctrl+Alt+G` 或 `Shift+F8`。保存时使用 Win32 `RegisterHotKey` 实际注册；如果组合已被系统或其他程序占用，会立即显示冲突提示并保留原设置。快捷键可以从设置窗口移除；当前使用自定义快捷键触发时，移除会同时切换到立即触发。
 
-原生模块没有编译或加载失败时，程序会输出警告并安全回退到 headless。
+原生模块没有编译或加载失败时，程序会输出明确错误并终止启动。
 
 ## 触发状态机
 
@@ -171,7 +158,7 @@ Windows 原生模块位于 `native/win32/`，使用纯 Node-API 和 Win32 API：
 - `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 开机启动；
 - 每显示器 DPI 感知和工作区边界限制。
 
-headless 入口不会导入这个模块。原生模块的构建结果位于：
+程序启动时必须加载该模块。原生模块的构建结果位于：
 
 ```text
 native/win32/build/Release/selection_forward_win32_ui.node
