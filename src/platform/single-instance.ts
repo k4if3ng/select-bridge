@@ -55,7 +55,7 @@ function createInstanceServer(distribution: DistributionMode): Server {
     socket.setEncoding('utf8');
     socket.setTimeout(NOTIFY_TIMEOUT_MS, () => socket.destroy());
     socket.once('data', (source) => {
-      const requestedDistribution = parseDistribution(source);
+      const requestedDistribution = parseDistribution(source.toString('utf8'));
       const sourceLabel = requestedDistribution ?? 'unknown';
       console.log(`[instance] 已阻止 ${sourceLabel} 启动重复实例。`);
     });
@@ -104,7 +104,7 @@ function notifyPrimaryInstance(
     socket.unref();
     socket.once('connect', () => socket.end(distribution));
     socket.on('data', (chunk) => {
-      response += chunk;
+      response += chunk.toString('utf8');
     });
     socket.once('end', () => finish(parseDistribution(response)));
     socket.once('error', () => finish(undefined));
