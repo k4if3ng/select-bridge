@@ -13,6 +13,14 @@ import {
 import { TriggerController } from './core/trigger-controller.js';
 import { isPortableShortcut } from './core/portable-shortcut.js';
 import { getDistributionMode } from './distribution.js';
+import {
+  formatUiMessage,
+  isUiLanguage,
+  resolveSupportedUiLanguage,
+  uiMessage,
+  withErrorDetails,
+  type UiLanguage,
+} from './i18n.js';
 import { acquireSingleInstance } from './platform/single-instance.js';
 import type { PlatformEvent, PlatformHost, PlatformState } from './platform/types.js';
 import { createPlatformHost } from './platform/create-platform-host.js';
@@ -32,9 +40,10 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
     return;
   }
 
-  const configStore = new ConfigStore();
-  let config = applyRuntimeOverrides(await configStore.load(), runtime);
   const platform = await createPlatformHost(runtime.hostMode);
+  const initialUiLanguage = resolveSupportedUiLanguage(platform.getSystemUiLanguage());
+  const configStore = new ConfigStore(undefined, initialUiLanguage);
+  let config = applyRuntimeOverrides(await configStore.load(), runtime);
   config = adaptConfigForPlatform(config, platform);
 
   const effectiveTargetTemplate = (): string =>
@@ -77,7 +86,13 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
       await persistPatch(patch);
     } catch (error: unknown) {
       controller.replaceConfig(config, false);
-      reportConfigError(platform, '保存配置失败', error);
+      reportConfigError(
+        platform,
+        config.uiLanguage,
+        'saveConfigFailedTitle',
+        'saveConfigFailed',
+        error,
+      );
     }
   };
 
@@ -122,32 +137,49 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
         return;
       }
       if (event.value === 'custom' && !isTargetUrlTemplate(config.customTargetUrlTemplate)) {
-        platform.showError('查询目标', '请先设置有效的自定义 URL。');
+        platform.showError(
+          uiMessage(config.uiLanguage, 'queryTargetTitle'),
+          uiMessage(config.uiLanguage, 'customUrlRequired'),
+        );
         return;
       }
       try {
         await persistPatch({ targetMode: event.value });
       } catch (error: unknown) {
-        reportConfigError(platform, '切换查询目标失败', error);
+        reportConfigError(
+          platform,
+          config.uiLanguage,
+          'switchTargetFailedTitle',
+          'switchTargetFailed',
+          error,
+        );
       }
       return;
     }
 
     if (event.type === 'save-target-url') {
       if (runtime.targetUrlOverrideSource) {
-        platform.completeTargetUrlSave(false, '当前 URL 由运行参数覆盖，无法从托盘修改。');
+        platform.completeTargetUrlSave(
+          false,
+          uiMessage(config.uiLanguage, 'runtimeUrlOverride'),
+        );
         return;
       }
       if (!isTargetUrlTemplate(event.value)) {
-        platform.completeTargetUrlSave(false, targetValidationMessage(event.value));
+        platform.completeTargetUrlSave(
+          false,
+          targetValidationMessage(config.uiLanguage, event.value),
+        );
         return;
       }
       try {
         await persistPatch({ customTargetUrlTemplate: event.value, targetMode: 'custom' });
         platform.completeTargetUrlSave(true);
       } catch (error: unknown) {
-        const message = errorMessage(error);
-        platform.completeTargetUrlSave(false, message);
+        platform.completeTargetUrlSave(
+          false,
+          withErrorDetails(config.uiLanguage, 'saveUrlFailed', errorMessage(error)),
+        );
         console.error('[config] 保存自定义 URL 失败：', error);
       }
       return;
@@ -158,10 +190,19 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
         await configStore.ensureExists();
         const path = event.type === 'open-config-file' ? configStore.path : dirname(configStore.path);
         if (!platform.openPath(path)) {
-          platform.showError('打开配置失败', `系统未能打开：\n${path}`);
+          platform.showError(
+            uiMessage(config.uiLanguage, 'openConfigFailedTitle'),
+            formatUiMessage(config.uiLanguage, 'openPathFailed', { path }),
+          );
         }
       } catch (error: unknown) {
-        reportConfigError(platform, '打开配置失败', error);
+        reportConfigError(
+          platform,
+          config.uiLanguage,
+          'openConfigFailedTitle',
+          'openConfigFailed',
+          error,
+        );
       }
       return;
     }
@@ -171,26 +212,62 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
         const diskConfig = await queueChange(() => configStore.readPersistent());
         applyConfig(diskConfig);
       } catch (error: unknown) {
-        reportConfigError(platform, '重新加载配置失败', error);
+        reportConfigError(
+          platform,
+          config.uiLanguage,
+          'reloadConfigFailedTitle',
+          'reloadConfigFailed',
+          error,
+        );
       }
       return;
     }
 
     if (event.type === 'toggle-auto-start') {
       if (!platform.capabilities.autoStart) {
-        platform.showError('开机启动', '当前平台宿主不支持管理开机启动。');
+        platform.showError(
+          uiMessage(config.uiLanguage, 'autoStartTitle'),
+          uiMessage(config.uiLanguage, 'autoStartUnsupported'),
+        );
         return;
       }
       const enabled = !config.autoStart;
       if (!(await platform.setAutoStart(enabled))) {
-        platform.showError('开机启动', '系统未能更新开机启动设置。');
+        platform.showError(
+          uiMessage(config.uiLanguage, 'autoStartTitle'),
+          uiMessage(config.uiLanguage, 'autoStartUpdateFailed'),
+        );
         return;
       }
       try {
         await persistPatch({ autoStart: enabled });
       } catch (error: unknown) {
         await platform.setAutoStart(!enabled);
-        reportConfigError(platform, '保存开机启动设置失败', error);
+        reportConfigError(
+          platform,
+          config.uiLanguage,
+          'saveAutoStartFailedTitle',
+          'saveAutoStartFailed',
+          error,
+        );
+      }
+      return;
+    }
+
+    if (event.type === 'set-ui-language') {
+      if (!isUiLanguage(event.value) || event.value === config.uiLanguage) {
+        return;
+      }
+      try {
+        await persistPatch({ uiLanguage: event.value });
+      } catch (error: unknown) {
+        reportConfigError(
+          platform,
+          config.uiLanguage,
+          'saveLanguageFailedTitle',
+          'saveLanguageFailed',
+          error,
+        );
       }
       return;
     }
@@ -286,6 +363,7 @@ function toPlatformState(config: AppConfig, runtime: RuntimeOptions): PlatformSt
     targetMode: runtime.targetUrlOverride ? 'custom' : config.targetMode,
     customTargetUrlTemplate: runtime.targetUrlOverride ?? config.customTargetUrlTemplate,
     targetUrlOverrideSource: runtime.targetUrlOverrideSource,
+    uiLanguage: config.uiLanguage,
   };
 }
 
@@ -301,22 +379,29 @@ function diffConfig(previous: AppConfig, next: AppConfig): ConfigPatch {
 
 function validateRuntimeTarget(runtime: RuntimeOptions): void {
   if (runtime.targetUrlOverride !== undefined && !isTargetUrlTemplate(runtime.targetUrlOverride)) {
-    throw new Error(targetValidationMessage(runtime.targetUrlOverride));
+    throw new Error(targetValidationMessage('en-US', runtime.targetUrlOverride));
   }
 }
 
-function targetValidationMessage(value: string): string {
+function targetValidationMessage(language: UiLanguage, value: string): string {
   if (value.length > 2048) {
-    return 'URL 模板不能超过 2048 个字符。';
+    return uiMessage(language, 'urlTemplateTooLong');
   }
-  return 'URL 模板必须以合法 URI scheme 开头，不能包含空白或控制字符，并且必须且只能包含一个 {text}。';
+  return uiMessage(language, 'urlTemplateInvalid');
 }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function reportConfigError(platform: PlatformHost, title: string, error: unknown): void {
-  console.error(`[config] ${title}：`, error);
-  platform.showError(title, errorMessage(error));
+function reportConfigError(
+  platform: PlatformHost,
+  language: UiLanguage,
+  titleKey: Parameters<typeof uiMessage>[1],
+  summaryKey: Parameters<typeof uiMessage>[1],
+  error: unknown,
+): void {
+  const title = uiMessage(language, titleKey);
+  console.error(`[config] ${title}:`, error);
+  platform.showError(title, withErrorDetails(language, summaryKey, errorMessage(error)));
 }

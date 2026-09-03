@@ -31,7 +31,8 @@ class Win32Host {
                   const std::string& custom_shortcut,
                   const std::string& target_mode,
                   const std::string& custom_target_url,
-                  const std::string& target_override_source);
+                  const std::string& target_override_source,
+                  const std::string& ui_language);
   bool ShowIndicator(int x,
                      int y,
                      const std::string& style,
@@ -48,6 +49,7 @@ class Win32Host {
                            const std::wstring& arguments_text);
   static bool OpenExternalUrl(const std::wstring& url);
   static bool OpenPath(const std::wstring& path);
+  static std::string GetSystemUiLanguage();
 
  private:
   struct IndicatorRequest;
@@ -101,6 +103,13 @@ class Win32Host {
   void SaveTargetUrl();
   void CopyTargetUrl();
   void ApplyTargetUrlSaveResult(bool ok, const std::string& message);
+  std::wstring LocalizedString(unsigned int resource_id) const;
+  std::wstring FormatLocalizedString(unsigned int resource_id,
+                                     const std::wstring& placeholder,
+                                     const std::wstring& value) const;
+  void RefreshLocalizedWindows();
+  void RefreshShortcutWindowText();
+  void RefreshTargetUrlWindowText();
 
   void ApplyIndicator(const IndicatorRequest& request);
   void PaintIndicator(HWND window);
@@ -160,6 +169,7 @@ class Win32Host {
   std::string target_mode_ = "goldendict";
   std::string custom_target_url_;
   std::string target_override_source_;
+  std::string ui_language_ = "en-US";
   bool target_url_save_pending_ = false;
   std::string pending_target_url_;
   std::string captured_shortcut_;

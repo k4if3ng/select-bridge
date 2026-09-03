@@ -4,6 +4,7 @@ import type {
   TargetUrlOverrideSource,
   TriggerMode,
 } from '../config.js';
+import type { UiLanguage } from '../i18n.js';
 
 export interface IndicatorOptions {
   x?: number;
@@ -25,6 +26,7 @@ export interface PlatformState {
   targetMode: TargetMode;
   customTargetUrlTemplate: string;
   targetUrlOverrideSource?: TargetUrlOverrideSource;
+  uiLanguage: UiLanguage;
 }
 
 export interface ShortcutRegistrationResult {
@@ -58,6 +60,7 @@ export type PlatformEvent =
   | { type: 'native-error'; value: string }
   | { type: 'set-target-mode'; value: string }
   | { type: 'save-target-url'; value: string }
+  | { type: 'set-ui-language'; value: string }
   | { type: 'open-config-file' }
   | { type: 'open-config-directory' }
   | { type: 'reload-config' }
@@ -67,6 +70,7 @@ export interface PlatformHost {
   readonly capabilities: PlatformCapabilities;
   start(onEvent: (event: PlatformEvent) => void): Promise<void>;
   stop(): Promise<void>;
+  getSystemUiLanguage(): string;
   updateState(state: PlatformState): void;
   showIndicator(options: IndicatorOptions): void;
   hideIndicator(): void;

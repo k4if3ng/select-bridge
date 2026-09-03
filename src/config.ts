@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { getDistributionMode } from './distribution.js';
+import { isUiLanguage, type UiLanguage } from './i18n.js';
 
 export const TRIGGER_MODES = [
   'immediate',
@@ -40,6 +41,7 @@ export interface AppConfig {
   autoStart: boolean;
   targetMode: TargetMode;
   customTargetUrlTemplate: string;
+  uiLanguage: UiLanguage;
 }
 
 export interface RuntimeOptions {
@@ -51,7 +53,7 @@ export interface RuntimeOptions {
 }
 
 export const DEFAULT_CONFIG: Readonly<AppConfig> = {
-  schemaVersion: 9,
+  schemaVersion: 10,
   enabled: true,
   triggerMode: 'immediate',
   indicatorAction: 'click',
@@ -66,31 +68,61 @@ export const DEFAULT_CONFIG: Readonly<AppConfig> = {
   autoStart: false,
   targetMode: 'goldendict',
   customTargetUrlTemplate: '',
+  uiLanguage: 'en-US',
 };
 
 export class ConfigStore {
   readonly path: string;
   private saveQueue: Promise<void> = Promise.resolve();
 
-  constructor(path = resolveConfigPath()) {
+  constructor(
+    path = resolveConfigPath(),
+    private readonly initialUiLanguage: UiLanguage = DEFAULT_CONFIG.uiLanguage,
+  ) {
     this.path = path;
   }
 
   async load(): Promise<AppConfig> {
     try {
-      return applyEnvironment(await this.readPersistent());
+      let stored: unknown;
+      try {
+        stored = JSON.parse(await readFile(this.path, 'utf8')) as unknown;
+      } catch (error: unknown) {
+        if (!isNodeError(error) || error.code !== 'ENOENT') {
+          throw error;
+        }
+        const created = { ...DEFAULT_CONFIG, uiLanguage: this.initialUiLanguage };
+        await this.save(created);
+        return applyEnvironment(created);
+      }
+
+      if (isRecord(stored) && !Object.hasOwn(stored, 'uiLanguage')) {
+        const migrated = sanitizeConfig(stored, this.initialUiLanguage);
+        try {
+          return applyEnvironment(
+            await this.mergePersistent({ uiLanguage: this.initialUiLanguage }),
+          );
+        } catch (error: unknown) {
+          console.warn(`[config] 无法持久化界面语言迁移到 ${this.path}。`, error);
+          return applyEnvironment(migrated);
+        }
+      }
+      return applyEnvironment(sanitizeConfig(stored, this.initialUiLanguage));
     } catch (error: unknown) {
       console.warn(`[config] 无法读取 ${this.path}，使用默认配置。`, error);
-      return applyEnvironment(DEFAULT_CONFIG);
+      return applyEnvironment({ ...DEFAULT_CONFIG, uiLanguage: this.initialUiLanguage });
     }
   }
 
   async readPersistent(): Promise<AppConfig> {
     try {
-      return sanitizeConfig(JSON.parse(await readFile(this.path, 'utf8')) as unknown);
+      return sanitizeConfig(
+        JSON.parse(await readFile(this.path, 'utf8')) as unknown,
+        this.initialUiLanguage,
+      );
     } catch (error: unknown) {
       if (isNodeError(error) && error.code === 'ENOENT') {
-        return { ...DEFAULT_CONFIG };
+        return { ...DEFAULT_CONFIG, uiLanguage: this.initialUiLanguage };
       }
       throw error;
     }
@@ -103,32 +135,35 @@ export class ConfigStore {
       if (!isNodeError(error) || error.code !== 'ENOENT') {
         throw error;
       }
-      await this.save({ ...DEFAULT_CONFIG });
+      await this.save({ ...DEFAULT_CONFIG, uiLanguage: this.initialUiLanguage });
     }
   }
 
   async mergePersistent(patch: Partial<AppConfig>): Promise<AppConfig> {
-    let stored: unknown = { ...DEFAULT_CONFIG };
-    try {
-      stored = JSON.parse(await readFile(this.path, 'utf8')) as unknown;
-    } catch (error: unknown) {
-      if (!isNodeError(error) || error.code !== 'ENOENT') {
-        throw error;
+    return this.enqueueSave(async () => {
+      let stored: unknown = { ...DEFAULT_CONFIG, uiLanguage: this.initialUiLanguage };
+      try {
+        stored = JSON.parse(await readFile(this.path, 'utf8')) as unknown;
+      } catch (error: unknown) {
+        if (!isNodeError(error) || error.code !== 'ENOENT') {
+          throw error;
+        }
       }
-    }
 
-    const storedRecord = isRecord(stored) ? stored : {};
-    const updated = sanitizeConfig({ ...storedRecord, ...patch, schemaVersion: 9 });
-    const persistedRecord: Record<string, unknown> = { ...storedRecord, ...updated };
-    delete persistedRecord.targetUrlTemplate;
-    await this.save(persistedRecord as unknown as AppConfig);
-    return updated;
+      const storedRecord = isRecord(stored) ? stored : {};
+      const updated = sanitizeConfig(
+        { ...storedRecord, ...patch, schemaVersion: DEFAULT_CONFIG.schemaVersion },
+        this.initialUiLanguage,
+      );
+      const persistedRecord: Record<string, unknown> = { ...storedRecord, ...updated };
+      delete persistedRecord.targetUrlTemplate;
+      await this.writeAtomically(persistedRecord as unknown as AppConfig);
+      return updated;
+    });
   }
 
   async save(config: AppConfig): Promise<void> {
-    const operation = this.saveQueue.then(() => this.writeAtomically(config));
-    this.saveQueue = operation.catch(() => undefined);
-    return operation;
+    return this.enqueueSave(() => this.writeAtomically(config));
   }
 
   async flush(): Promise<void> {
@@ -155,6 +190,12 @@ export class ConfigStore {
     } finally {
       await rm(temporaryPath, { force: true });
     }
+  }
+
+  private enqueueSave<T>(operation: () => Promise<T>): Promise<T> {
+    const queued = this.saveQueue.then(operation);
+    this.saveQueue = queued.then(() => undefined, () => undefined);
+    return queued;
   }
 }
 
@@ -239,7 +280,10 @@ function resolveRuntimeHostMode(
   return environmentValue;
 }
 
-function sanitizeConfig(value: unknown): AppConfig {
+function sanitizeConfig(
+  value: unknown,
+  missingUiLanguage: UiLanguage = DEFAULT_CONFIG.uiLanguage,
+): AppConfig {
   if (!isRecord(value)) {
     return { ...DEFAULT_CONFIG };
   }
@@ -281,6 +325,11 @@ function sanitizeConfig(value: unknown): AppConfig {
       : getBoundedInteger(value.dotSize, DEFAULT_CONFIG.dotSize, 12, 28),
     customShortcut,
     autoStart: getBoolean(value.autoStart, DEFAULT_CONFIG.autoStart),
+    uiLanguage: Object.hasOwn(value, 'uiLanguage')
+      ? isUiLanguage(value.uiLanguage)
+        ? value.uiLanguage
+        : DEFAULT_CONFIG.uiLanguage
+      : missingUiLanguage,
     ...migrateTargetConfig(value),
   };
 }

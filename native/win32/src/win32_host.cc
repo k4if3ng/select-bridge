@@ -68,6 +68,8 @@ constexpr UINT kCommandSetTargetUrl = 1522;
 constexpr UINT kCommandOpenConfigFile = 1530;
 constexpr UINT kCommandOpenConfigDirectory = 1531;
 constexpr UINT kCommandReloadConfig = 1532;
+constexpr UINT kCommandLanguageEnglish = 1540;
+constexpr UINT kCommandLanguageSimplifiedChinese = 1541;
 constexpr UINT kShortcutInstructions = 1600;
 constexpr UINT kShortcutFieldLabel = 1601;
 constexpr UINT kShortcutValueEdit = 1602;
@@ -459,6 +461,55 @@ int MeasureFontHeight(HWND window, HFONT font, int fallback) {
   return measured ? metrics.tmHeight : fallback;
 }
 
+LANGID ResourceLanguageId(const std::string& ui_language) {
+  return ui_language == "zh-CN"
+             ? MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED)
+             : MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US);
+}
+
+std::wstring LoadStringResource(HINSTANCE instance, UINT resource_id, LANGID language_id) {
+  const UINT block_id = resource_id / 16 + 1;
+  HRSRC resource = FindResourceExW(
+      instance, RT_STRING, MAKEINTRESOURCEW(block_id), language_id);
+  if (!resource) return {};
+  HGLOBAL loaded = LoadResource(instance, resource);
+  if (!loaded) return {};
+  const auto* cursor = static_cast<const wchar_t*>(LockResource(loaded));
+  const DWORD byte_size = SizeofResource(instance, resource);
+  if (!cursor || byte_size < sizeof(wchar_t)) return {};
+  const auto* end = cursor + byte_size / sizeof(wchar_t);
+  const UINT index = resource_id % 16;
+  for (UINT current = 0; current < 16 && cursor < end; ++current) {
+    const UINT length = static_cast<UINT>(*cursor++);
+    if (length > static_cast<UINT>(end - cursor)) return {};
+    if (current == index) {
+      return std::wstring(cursor, cursor + length);
+    }
+    cursor += length;
+  }
+  return {};
+}
+
+std::wstring LoadLocalizedString(HINSTANCE instance,
+                                 UINT resource_id,
+                                 const std::string& ui_language) {
+  std::wstring value =
+      LoadStringResource(instance, resource_id, ResourceLanguageId(ui_language));
+  if (!value.empty() || ui_language == "en-US") return value;
+  return LoadStringResource(
+      instance, resource_id, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US));
+}
+
+std::wstring ReplacePlaceholder(std::wstring text,
+                                const std::wstring& placeholder,
+                                const std::wstring& value) {
+  const size_t position = text.find(placeholder);
+  if (position != std::wstring::npos) {
+    text.replace(position, placeholder.size(), value);
+  }
+  return text;
+}
+
 void ResizeAndCenterWindow(HWND window,
                            int client_width,
                            int client_height,
@@ -516,6 +567,7 @@ struct Win32Host::TrayStateRequest {
   std::string target_mode;
   std::string custom_target_url;
   std::string target_override_source;
+  std::string ui_language;
 };
 
 struct Win32Host::ShortcutRequest {
@@ -643,7 +695,8 @@ bool Win32Host::UpdateTray(bool enabled,
                            const std::string& custom_shortcut,
                            const std::string& target_mode,
                            const std::string& custom_target_url,
-                           const std::string& target_override_source) {
+                           const std::string& target_override_source,
+                           const std::string& ui_language) {
   if (!owner_window_ || stopping_) {
     return false;
   }
@@ -659,6 +712,7 @@ bool Win32Host::UpdateTray(bool enabled,
   request->target_mode = target_mode;
   request->custom_target_url = custom_target_url;
   request->target_override_source = target_override_source;
+  request->ui_language = ui_language == "zh-CN" ? "zh-CN" : "en-US";
   if (!PostMessageW(owner_window_, kUpdateTrayMessage, 0, reinterpret_cast<LPARAM>(request.get()))) {
     return false;
   }
@@ -808,6 +862,27 @@ bool Win32Host::OpenPath(const std::wstring& path) {
   if (path.empty()) return false;
   const HINSTANCE result = ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
   return reinterpret_cast<INT_PTR>(result) > 32;
+}
+
+std::string Win32Host::GetSystemUiLanguage() {
+  ULONG language_count = 0;
+  ULONG buffer_length = 0;
+  if (GetUserPreferredUILanguages(
+          MUI_LANGUAGE_NAME, &language_count, nullptr, &buffer_length) &&
+      buffer_length > 1) {
+    std::wstring buffer(buffer_length, L'\0');
+    if (GetUserPreferredUILanguages(
+            MUI_LANGUAGE_NAME, &language_count, buffer.data(), &buffer_length) &&
+        !buffer.empty() && buffer.front() != L'\0') {
+      return WideToUtf8Local(std::wstring(buffer.data()));
+    }
+  }
+
+  wchar_t locale_name[LOCALE_NAME_MAX_LENGTH]{};
+  if (GetUserDefaultLocaleName(locale_name, ARRAYSIZE(locale_name)) > 0) {
+    return WideToUtf8Local(locale_name);
+  }
+  return "en-US";
 }
 
 DWORD WINAPI Win32Host::ThreadEntry(void* parameter) {
@@ -1003,8 +1078,11 @@ void Win32Host::ShowTrayMenu() {
   HMENU dot_size_menu = CreatePopupMenu();
   HMENU target_menu = CreatePopupMenu();
   HMENU settings_menu = CreatePopupMenu();
+  HMENU language_menu = CreatePopupMenu();
   if (!menu || !trigger_menu || !indicator_menu || !indicator_action_menu ||
-      !icon_size_menu || !dot_size_menu || !target_menu || !settings_menu) {
+      !icon_size_menu || !dot_size_menu || !target_menu || !settings_menu ||
+      !language_menu) {
+    if (language_menu) DestroyMenu(language_menu);
     if (settings_menu) DestroyMenu(settings_menu);
     if (target_menu) DestroyMenu(target_menu);
     if (dot_size_menu) DestroyMenu(dot_size_menu);
@@ -1019,7 +1097,7 @@ void Win32Host::ShowTrayMenu() {
   AppendMenuW(menu,
               MF_STRING | (enabled_ ? MF_CHECKED : MF_UNCHECKED),
               kCommandToggleEnabled,
-              L"启用选词转发");
+              LocalizedString(IDS_MENU_ENABLE_SELECTION_FORWARDING).c_str());
   AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 
   const bool target_locked = !target_override_source_.empty();
@@ -1030,37 +1108,54 @@ void Win32Host::ShowTrayMenu() {
   AppendMenuW(target_menu,
               MF_STRING | (target_locked || custom_target_url_.empty() ? MF_GRAYED : MF_ENABLED),
               kCommandTargetCustom,
-              L"自定义 URL");
+              LocalizedString(IDS_MENU_CUSTOM_URL).c_str());
   CheckMenuRadioItem(target_menu,
                      kCommandTargetGoldendict,
                      kCommandTargetCustom,
                      target_mode_ == "custom" ? kCommandTargetCustom : kCommandTargetGoldendict,
                      MF_BYCOMMAND);
   AppendMenuW(target_menu, MF_SEPARATOR, 0, nullptr);
-  AppendMenuW(target_menu, MF_STRING, kCommandSetTargetUrl, L"设置 URL 模板…");
+  AppendMenuW(target_menu,
+              MF_STRING,
+              kCommandSetTargetUrl,
+              LocalizedString(IDS_MENU_SET_URL_TEMPLATE).c_str());
   AppendMenuW(menu,
               MF_POPUP,
               reinterpret_cast<UINT_PTR>(target_menu),
-              target_locked ? L"查询目标（运行时覆盖）" : L"查询目标");
+              LocalizedString(target_locked ? IDS_MENU_LOOKUP_TARGET_OVERRIDE
+                                            : IDS_MENU_LOOKUP_TARGET)
+                  .c_str());
 
-  AppendMenuW(trigger_menu, MF_STRING, kCommandImmediate, L"立即转发");
+  AppendMenuW(trigger_menu,
+              MF_STRING,
+              kCommandImmediate,
+              LocalizedString(IDS_MENU_FORWARD_IMMEDIATELY).c_str());
   AppendMenuW(trigger_menu, MF_SEPARATOR, 0, nullptr);
-  AppendMenuW(trigger_menu, MF_STRING, kCommandIcon, L"显示图标");
-  AppendMenuW(trigger_menu, MF_STRING, kCommandDot, L"显示圆点");
+  AppendMenuW(trigger_menu, MF_STRING, kCommandIcon,
+              LocalizedString(IDS_MENU_SHOW_ICON).c_str());
+  AppendMenuW(trigger_menu, MF_STRING, kCommandDot,
+              LocalizedString(IDS_MENU_SHOW_DOT).c_str());
   AppendMenuW(trigger_menu, MF_SEPARATOR, 0, nullptr);
-  AppendMenuW(trigger_menu, MF_STRING, kCommandCtrl, L"按 Ctrl 转发");
-  AppendMenuW(trigger_menu, MF_STRING, kCommandAlt, L"按 Alt 转发");
-  AppendMenuW(trigger_menu, MF_STRING, kCommandShift, L"按 Shift 转发");
+  AppendMenuW(trigger_menu, MF_STRING, kCommandCtrl,
+              LocalizedString(IDS_MENU_HOLD_CTRL_TO_FORWARD).c_str());
+  AppendMenuW(trigger_menu, MF_STRING, kCommandAlt,
+              LocalizedString(IDS_MENU_HOLD_ALT_TO_FORWARD).c_str());
+  AppendMenuW(trigger_menu, MF_STRING, kCommandShift,
+              LocalizedString(IDS_MENU_HOLD_SHIFT_TO_FORWARD).c_str());
   AppendMenuW(trigger_menu,
               MF_STRING,
               kCommandCustom,
-              custom_shortcut_.empty() ? L"自定义快捷键（未设置）"
-                                       : L"自定义快捷键");
+              LocalizedString(custom_shortcut_.empty()
+                                  ? IDS_MENU_CUSTOM_SHORTCUT_NOT_SET
+                                  : IDS_MENU_CUSTOM_SHORTCUT)
+                  .c_str());
   AppendMenuW(trigger_menu, MF_SEPARATOR, 0, nullptr);
-  const std::wstring shortcut_label = custom_shortcut_.empty()
-                                            ? L"设置自定义快捷键…"
-                                            : L"设置自定义快捷键…（" +
-                                                  Utf8ToWideLocal(custom_shortcut_) + L"）";
+  const std::wstring shortcut_label =
+      custom_shortcut_.empty()
+          ? LocalizedString(IDS_MENU_SET_CUSTOM_SHORTCUT)
+          : FormatLocalizedString(IDS_MENU_SET_CUSTOM_SHORTCUT_VALUE,
+                                  L"{shortcut}",
+                                  Utf8ToWideLocal(custom_shortcut_));
   AppendMenuW(trigger_menu, MF_STRING, kCommandSetShortcut, shortcut_label.c_str());
 
   const UINT checked_command = trigger_mode_ == "icon"      ? kCommandIcon
@@ -1079,10 +1174,12 @@ void Win32Host::ShowTrayMenu() {
   AppendMenuW(menu,
               MF_POPUP,
               reinterpret_cast<UINT_PTR>(trigger_menu),
-              L"触发方式");
+              LocalizedString(IDS_MENU_TRIGGER_MODE).c_str());
 
-  AppendMenuW(indicator_action_menu, MF_STRING, kCommandIndicatorClick, L"点击触发");
-  AppendMenuW(indicator_action_menu, MF_STRING, kCommandIndicatorHover, L"悬浮触发");
+  AppendMenuW(indicator_action_menu, MF_STRING, kCommandIndicatorClick,
+              LocalizedString(IDS_MENU_CLICK).c_str());
+  AppendMenuW(indicator_action_menu, MF_STRING, kCommandIndicatorHover,
+              LocalizedString(IDS_MENU_HOVER).c_str());
   CheckMenuRadioItem(indicator_action_menu,
                      kCommandIndicatorClick,
                      kCommandIndicatorHover,
@@ -1092,7 +1189,7 @@ void Win32Host::ShowTrayMenu() {
   AppendMenuW(indicator_menu,
               MF_POPUP,
               reinterpret_cast<UINT_PTR>(indicator_action_menu),
-              L"触发动作");
+              LocalizedString(IDS_MENU_ACTIVATION).c_str());
 
   AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize24, L"24 px");
   AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize28, L"28 px");
@@ -1112,7 +1209,7 @@ void Win32Host::ShowTrayMenu() {
   AppendMenuW(indicator_menu,
               MF_POPUP,
               reinterpret_cast<UINT_PTR>(icon_size_menu),
-              L"图标大小");
+              LocalizedString(IDS_MENU_ICON_SIZE).c_str());
 
   AppendMenuW(dot_size_menu, MF_STRING, kCommandDotSize12, L"12 px");
   AppendMenuW(dot_size_menu, MF_STRING, kCommandDotSize16, L"16 px");
@@ -1132,27 +1229,45 @@ void Win32Host::ShowTrayMenu() {
   AppendMenuW(indicator_menu,
               MF_POPUP,
               reinterpret_cast<UINT_PTR>(dot_size_menu),
-              L"圆点大小");
+              LocalizedString(IDS_MENU_DOT_SIZE).c_str());
 
   AppendMenuW(menu,
               MF_POPUP,
               reinterpret_cast<UINT_PTR>(indicator_menu),
-              L"指示器设置");
+              LocalizedString(IDS_MENU_INDICATOR_SETTINGS).c_str());
 
   AppendMenuW(settings_menu,
               MF_STRING | (auto_start_ ? MF_CHECKED : MF_UNCHECKED),
               kCommandToggleAutoStart,
-              L"登录时自动启动");
+              LocalizedString(IDS_MENU_START_AT_SIGN_IN).c_str());
+  AppendMenuW(language_menu, MF_STRING, kCommandLanguageEnglish,
+              LocalizedString(IDS_MENU_ENGLISH).c_str());
+  AppendMenuW(language_menu, MF_STRING, kCommandLanguageSimplifiedChinese,
+              LocalizedString(IDS_MENU_SIMPLIFIED_CHINESE).c_str());
+  CheckMenuRadioItem(language_menu,
+                     kCommandLanguageEnglish,
+                     kCommandLanguageSimplifiedChinese,
+                     ui_language_ == "zh-CN" ? kCommandLanguageSimplifiedChinese
+                                             : kCommandLanguageEnglish,
+                     MF_BYCOMMAND);
+  AppendMenuW(settings_menu,
+              MF_POPUP,
+              reinterpret_cast<UINT_PTR>(language_menu),
+              LocalizedString(IDS_MENU_LANGUAGE).c_str());
   AppendMenuW(settings_menu, MF_SEPARATOR, 0, nullptr);
-  AppendMenuW(settings_menu, MF_STRING, kCommandOpenConfigFile, L"打开配置文件");
-  AppendMenuW(settings_menu, MF_STRING, kCommandOpenConfigDirectory, L"打开配置目录");
-  AppendMenuW(settings_menu, MF_STRING, kCommandReloadConfig, L"重新加载配置");
+  AppendMenuW(settings_menu, MF_STRING, kCommandOpenConfigFile,
+              LocalizedString(IDS_MENU_OPEN_CONFIG_FILE).c_str());
+  AppendMenuW(settings_menu, MF_STRING, kCommandOpenConfigDirectory,
+              LocalizedString(IDS_MENU_OPEN_CONFIG_FOLDER).c_str());
+  AppendMenuW(settings_menu, MF_STRING, kCommandReloadConfig,
+              LocalizedString(IDS_MENU_RELOAD_CONFIGURATION).c_str());
   AppendMenuW(menu,
               MF_POPUP,
               reinterpret_cast<UINT_PTR>(settings_menu),
-              L"设置");
+              LocalizedString(IDS_MENU_SETTINGS).c_str());
   AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-  AppendMenuW(menu, MF_STRING, kCommandExit, L"退出");
+  AppendMenuW(menu, MF_STRING, kCommandExit,
+              LocalizedString(IDS_MENU_EXIT).c_str());
 
   POINT cursor{};
   GetCursorPos(&cursor);
@@ -1245,6 +1360,12 @@ void Win32Host::HandleTrayCommand(unsigned int command) {
     case kCommandToggleAutoStart:
       SendEvent("toggle-auto-start");
       break;
+    case kCommandLanguageEnglish:
+      SendEvent("set-ui-language", "en-US");
+      break;
+    case kCommandLanguageSimplifiedChinese:
+      SendEvent("set-ui-language", "zh-CN");
+      break;
     case kCommandOpenConfigFile:
       SendEvent("open-config-file");
       break;
@@ -1285,7 +1406,7 @@ void Win32Host::ShowShortcutCapture(bool activate_after_save) {
   constexpr DWORD window_style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
   shortcut_window_ = CreateWindowExW(extended_style,
                                      kShortcutClassName,
-                                     L"设置自定义快捷键",
+                                     LocalizedString(IDS_SHORTCUT_TITLE).c_str(),
                                      window_style,
                                      CW_USEDEFAULT,
                                      CW_USEDEFAULT,
@@ -1304,7 +1425,7 @@ void Win32Host::ShowShortcutCapture(bool activate_after_save) {
   shortcut_instructions_ = CreateWindowExW(
       0,
       L"STATIC",
-      L"按下新的组合快捷键，然后选择“保存”。",
+      LocalizedString(IDS_SHORTCUT_INSTRUCTIONS).c_str(),
       WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX,
       0,
       0,
@@ -1317,7 +1438,7 @@ void Win32Host::ShowShortcutCapture(bool activate_after_save) {
   shortcut_field_label_ = CreateWindowExW(
       0,
       L"STATIC",
-      L"自定义快捷键",
+      LocalizedString(IDS_SHORTCUT_FIELD).c_str(),
       WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX,
       0,
       0,
@@ -1369,7 +1490,7 @@ void Win32Host::ShowShortcutCapture(bool activate_after_save) {
   shortcut_remove_button_ = CreateWindowExW(
       0,
       L"BUTTON",
-      L"移除",
+      LocalizedString(IDS_SHORTCUT_REMOVE).c_str(),
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
       0,
       0,
@@ -1382,7 +1503,7 @@ void Win32Host::ShowShortcutCapture(bool activate_after_save) {
   shortcut_cancel_button_ = CreateWindowExW(
       0,
       L"BUTTON",
-      L"取消",
+      LocalizedString(IDS_COMMON_CANCEL).c_str(),
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
       0,
       0,
@@ -1395,7 +1516,7 @@ void Win32Host::ShowShortcutCapture(bool activate_after_save) {
   shortcut_save_button_ = CreateWindowExW(
       0,
       L"BUTTON",
-      L"保存",
+      LocalizedString(IDS_COMMON_SAVE).c_str(),
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
       0,
       0,
@@ -1549,35 +1670,35 @@ void Win32Host::UpdateShortcutCapture(ShortcutCaptureState state,
     SendMessageW(shortcut_value_edit_, EM_SETSEL, 0, 0);
   }
 
-  const wchar_t* status_text = custom_shortcut_.empty()
-                                   ? L"尚未设置自定义快捷键"
-                                   : trigger_mode_ == "custom"
-                                         ? L"当前快捷键已生效"
-                                         : L"快捷键已保存，当前未启用";
+  std::wstring status_text =
+      LocalizedString(custom_shortcut_.empty()
+                          ? IDS_SHORTCUT_NOT_SET
+                          : trigger_mode_ == "custom" ? IDS_SHORTCUT_ACTIVE
+                                                      : IDS_SHORTCUT_SAVED_INACTIVE);
   switch (shortcut_capture_state_) {
     case ShortcutCaptureState::waiting:
-      status_text = L"继续按下一个字母、数字或功能键";
+      status_text = LocalizedString(IDS_SHORTCUT_CONTINUE);
       break;
     case ShortcutCaptureState::valid:
-      status_text = L"快捷键可以使用";
+      status_text = LocalizedString(IDS_SHORTCUT_AVAILABLE);
       break;
     case ShortcutCaptureState::same:
-      status_text = L"该快捷键与当前设置相同";
+      status_text = LocalizedString(IDS_SHORTCUT_SAME);
       break;
     case ShortcutCaptureState::conflict:
-      status_text = L"快捷键已被其他程序占用";
+      status_text = LocalizedString(IDS_SHORTCUT_CONFLICT);
       break;
     case ShortcutCaptureState::invalid:
-      status_text = L"该组合不是有效的全局快捷键";
+      status_text = LocalizedString(IDS_SHORTCUT_INVALID);
       break;
     case ShortcutCaptureState::error:
-      status_text = L"快捷键注册失败";
+      status_text = LocalizedString(IDS_SHORTCUT_REGISTRATION_FAILED);
       break;
     case ShortcutCaptureState::current:
       break;
   }
   if (shortcut_status_label_) {
-    SetWindowTextW(shortcut_status_label_, status_text);
+    SetWindowTextW(shortcut_status_label_, status_text.c_str());
   }
   if (shortcut_save_button_) {
     EnableWindow(shortcut_save_button_, state == ShortcutCaptureState::valid);
@@ -1683,7 +1804,9 @@ void Win32Host::ShowTargetUrlEditor() {
   }
 
   if (target_url_save_pending_) {
-    MessageBoxW(owner_window_, L"自定义 URL 正在保存，请稍候。", L"设置 URL 模板",
+    const std::wstring message = LocalizedString(IDS_URL_SAVE_PENDING_MESSAGE);
+    const std::wstring title = LocalizedString(IDS_URL_TITLE);
+    MessageBoxW(owner_window_, message.c_str(), title.c_str(),
                 MB_OK | MB_ICONINFORMATION);
     return;
   }
@@ -1692,7 +1815,7 @@ void Win32Host::ShowTargetUrlEditor() {
   constexpr DWORD window_style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
   target_url_window_ = CreateWindowExW(extended_style,
                                        kTargetUrlClassName,
-                                       L"设置 URL 模板",
+                                       LocalizedString(IDS_URL_TITLE).c_str(),
                                        window_style,
                                        CW_USEDEFAULT,
                                        CW_USEDEFAULT,
@@ -1707,14 +1830,14 @@ void Win32Host::ShowTargetUrlEditor() {
   const UINT dpi = GetWindowDpiCompat(target_url_window_);
   ResizeAndCenterWindow(target_url_window_, 540, 220, window_style, extended_style, dpi);
   const bool locked = !target_override_source_.empty();
-  const wchar_t* instructions = locked
-      ? L"当前查询 URL 由运行参数覆盖。你可以复制有效值，但需要从启动参数或环境变量中修改。"
-      : L"使用一个 {text} 作为选中文本占位符。选中文本可能发送给对应应用或服务，请仅配置可信目标。";
-  target_url_instructions_ = CreateWindowExW(0, L"STATIC", instructions,
+  const std::wstring instructions = LocalizedString(
+      locked ? IDS_URL_OVERRIDE_INSTRUCTIONS : IDS_URL_INSTRUCTIONS);
+  target_url_instructions_ = CreateWindowExW(0, L"STATIC", instructions.c_str(),
       WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
       0, 0, 0, 0, target_url_window_,
       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlInstructions)), instance_, nullptr);
-  target_url_field_label_ = CreateWindowExW(0, L"STATIC", L"URL 模板",
+  target_url_field_label_ = CreateWindowExW(0, L"STATIC",
+      LocalizedString(IDS_URL_FIELD).c_str(),
       WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX,
       0, 0, 0, 0, target_url_window_,
       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlFieldLabel)), instance_, nullptr);
@@ -1730,15 +1853,18 @@ void Win32Host::ShowTargetUrlEditor() {
       WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX,
       0, 0, 0, 0, target_url_window_,
       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlStatusLabel)), instance_, nullptr);
-  target_url_copy_button_ = CreateWindowExW(0, L"BUTTON", L"复制 URL",
+  target_url_copy_button_ = CreateWindowExW(0, L"BUTTON",
+      LocalizedString(IDS_URL_COPY).c_str(),
       WS_CHILD | (locked ? WS_VISIBLE : 0) | WS_TABSTOP | BS_PUSHBUTTON,
       0, 0, 0, 0, target_url_window_,
       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlCopyButton)), instance_, nullptr);
-  target_url_cancel_button_ = CreateWindowExW(0, L"BUTTON", locked ? L"关闭" : L"取消",
+  target_url_cancel_button_ = CreateWindowExW(0, L"BUTTON",
+      LocalizedString(locked ? IDS_COMMON_CLOSE : IDS_COMMON_CANCEL).c_str(),
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
       0, 0, 0, 0, target_url_window_,
       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlCancelButton)), instance_, nullptr);
-  target_url_save_button_ = CreateWindowExW(0, L"BUTTON", L"保存",
+  target_url_save_button_ = CreateWindowExW(0, L"BUTTON",
+      LocalizedString(IDS_COMMON_SAVE).c_str(),
       WS_CHILD | (locked ? 0 : WS_VISIBLE) | WS_TABSTOP | BS_DEFPUSHBUTTON,
       0, 0, 0, 0, target_url_window_,
       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlSaveButton)), instance_, nullptr);
@@ -1752,7 +1878,7 @@ void Win32Host::ShowTargetUrlEditor() {
   }
   SendMessageW(target_url_edit_, EM_SETLIMITTEXT, 2048, 0);
   SendMessageW(target_url_edit_, kEditSetCueBannerMessage, TRUE,
-               reinterpret_cast<LPARAM>(L"例如：https://example.com/search?q={text}"));
+               reinterpret_cast<LPARAM>(LocalizedString(IDS_URL_CUE).c_str()));
   const std::wstring current = Utf8ToWideLocal(custom_target_url_);
   SetWindowTextW(target_url_edit_, current.c_str());
   RecreateTargetUrlFont();
@@ -1831,8 +1957,12 @@ void Win32Host::ApplyTargetUrlFont() {
 void Win32Host::UpdateTargetUrlValidation() {
   if (!target_url_edit_) return;
   if (!target_override_source_.empty()) {
-    const std::wstring source = target_override_source_ == "cli" ? L"命令行参数" : L"环境变量";
-    SetWindowTextW(target_url_status_label_, (L"覆盖来源：" + source).c_str());
+    const std::wstring source = LocalizedString(
+        target_override_source_ == "cli" ? IDS_URL_SOURCE_COMMAND_LINE
+                                         : IDS_URL_SOURCE_ENVIRONMENT);
+    const std::wstring status =
+        FormatLocalizedString(IDS_URL_SOURCE, L"{source}", source);
+    SetWindowTextW(target_url_status_label_, status.c_str());
     return;
   }
   const int length = GetWindowTextLengthW(target_url_edit_);
@@ -1840,9 +1970,8 @@ void Win32Host::UpdateTargetUrlValidation() {
   GetWindowTextW(target_url_edit_, value.data(), length + 1);
   value.resize(static_cast<size_t>(length));
   const bool valid = IsValidTargetUrl(value);
-  SetWindowTextW(target_url_status_label_, valid
-      ? L"格式有效；保存后将立即切换到自定义 URL。"
-      : L"需要合法 URI scheme、恰好一个 {text}，且不能包含空白或控制字符。");
+  SetWindowTextW(target_url_status_label_,
+                 LocalizedString(valid ? IDS_URL_VALID : IDS_URL_INVALID).c_str());
   EnableWindow(target_url_save_button_, valid && !target_url_save_pending_);
 }
 
@@ -1861,7 +1990,7 @@ void Win32Host::SaveTargetUrl() {
   EnableWindow(target_url_edit_, FALSE);
   EnableWindow(target_url_cancel_button_, FALSE);
   EnableWindow(target_url_save_button_, FALSE);
-  SetWindowTextW(target_url_status_label_, L"正在保存…");
+  SetWindowTextW(target_url_status_label_, LocalizedString(IDS_URL_SAVING).c_str());
   SendEvent("save-target-url", pending_target_url_);
 }
 
@@ -1899,7 +2028,9 @@ void Win32Host::ApplyTargetUrlSaveResult(bool ok, const std::string& message) {
   if (!target_url_window_) return;
   EnableWindow(target_url_edit_, TRUE);
   EnableWindow(target_url_cancel_button_, TRUE);
-  const std::wstring error = Utf8ToWideLocal(message.empty() ? "保存失败，请重试。" : message);
+  const std::wstring error = message.empty()
+                                 ? LocalizedString(IDS_URL_SAVE_FAILED)
+                                 : Utf8ToWideLocal(message);
   SetWindowTextW(target_url_status_label_, error.c_str());
   const int length = GetWindowTextLengthW(target_url_edit_);
   std::wstring value(static_cast<size_t>(length) + 1, L'\0');
@@ -1907,6 +2038,63 @@ void Win32Host::ApplyTargetUrlSaveResult(bool ok, const std::string& message) {
   value.resize(static_cast<size_t>(length));
   EnableWindow(target_url_save_button_, IsValidTargetUrl(value));
   SetFocus(target_url_edit_);
+}
+
+std::wstring Win32Host::LocalizedString(unsigned int resource_id) const {
+  return LoadLocalizedString(instance_, resource_id, ui_language_);
+}
+
+std::wstring Win32Host::FormatLocalizedString(
+    unsigned int resource_id,
+    const std::wstring& placeholder,
+    const std::wstring& value) const {
+  return ReplacePlaceholder(LocalizedString(resource_id), placeholder, value);
+}
+
+void Win32Host::RefreshLocalizedWindows() {
+  RefreshShortcutWindowText();
+  RefreshTargetUrlWindowText();
+}
+
+void Win32Host::RefreshShortcutWindowText() {
+  if (!shortcut_window_) return;
+  SetWindowTextW(shortcut_window_, LocalizedString(IDS_SHORTCUT_TITLE).c_str());
+  SetWindowTextW(shortcut_instructions_,
+                 LocalizedString(IDS_SHORTCUT_INSTRUCTIONS).c_str());
+  SetWindowTextW(shortcut_field_label_, LocalizedString(IDS_SHORTCUT_FIELD).c_str());
+  SetWindowTextW(shortcut_remove_button_, LocalizedString(IDS_SHORTCUT_REMOVE).c_str());
+  SetWindowTextW(shortcut_cancel_button_, LocalizedString(IDS_COMMON_CANCEL).c_str());
+  SetWindowTextW(shortcut_save_button_, LocalizedString(IDS_COMMON_SAVE).c_str());
+  UpdateShortcutCapture(shortcut_capture_state_, shortcut_preview_);
+  LayoutShortcutCapture();
+  RedrawWindow(shortcut_window_, nullptr, nullptr,
+               RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+}
+
+void Win32Host::RefreshTargetUrlWindowText() {
+  if (!target_url_window_) return;
+  const bool locked = !target_override_source_.empty();
+  SetWindowTextW(target_url_window_, LocalizedString(IDS_URL_TITLE).c_str());
+  SetWindowTextW(target_url_instructions_,
+                 LocalizedString(locked ? IDS_URL_OVERRIDE_INSTRUCTIONS
+                                        : IDS_URL_INSTRUCTIONS)
+                     .c_str());
+  SetWindowTextW(target_url_field_label_, LocalizedString(IDS_URL_FIELD).c_str());
+  SetWindowTextW(target_url_copy_button_, LocalizedString(IDS_URL_COPY).c_str());
+  SetWindowTextW(target_url_cancel_button_,
+                 LocalizedString(locked ? IDS_COMMON_CLOSE : IDS_COMMON_CANCEL).c_str());
+  SetWindowTextW(target_url_save_button_, LocalizedString(IDS_COMMON_SAVE).c_str());
+  const std::wstring cue = LocalizedString(IDS_URL_CUE);
+  SendMessageW(target_url_edit_, kEditSetCueBannerMessage, TRUE,
+               reinterpret_cast<LPARAM>(cue.c_str()));
+  if (target_url_save_pending_) {
+    SetWindowTextW(target_url_status_label_, LocalizedString(IDS_URL_SAVING).c_str());
+  } else {
+    UpdateTargetUrlValidation();
+  }
+  LayoutTargetUrlEditor();
+  RedrawWindow(target_url_window_, nullptr, nullptr,
+               RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
 
 void Win32Host::ApplyIndicator(const IndicatorRequest& request) {
@@ -2296,6 +2484,8 @@ LRESULT CALLBACK Win32Host::OwnerWindowProc(HWND window,
       host->target_mode_ = request->target_mode == "custom" ? "custom" : "goldendict";
       host->custom_target_url_ = request->custom_target_url;
       host->target_override_source_ = request->target_override_source;
+      host->ui_language_ = request->ui_language == "zh-CN" ? "zh-CN" : "en-US";
+      host->RefreshLocalizedWindows();
       if (host->trigger_mode_ == "custom") {
         if (host->custom_shortcut_.empty()) {
           host->ClearShortcut();

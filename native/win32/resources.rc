@@ -1,3 +1,6 @@
 #include "resource.h"
 
 IDI_SELECT_BRIDGE ICON "..\\..\\resources\\icon.ico"
+
+#include "strings\\en-US.rc"
+#include "strings\\zh-CN.rc"

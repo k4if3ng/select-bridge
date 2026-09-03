@@ -49,7 +49,7 @@ test('serializes concurrent config saves and leaves valid JSON', async () => {
 
     const saved = JSON.parse(await readFile(path, 'utf8'));
     assert.equal(saved.enabled, true);
-    assert.equal(saved.schemaVersion, 9);
+    assert.equal(saved.schemaVersion, 10);
     assert.equal(saved.targetMode, 'goldendict');
     assert.equal(saved.customTargetUrlTemplate, '');
   } finally {
@@ -70,7 +70,7 @@ test('migrates schema 8 target URL settings', async () => {
       targetUrlTemplate: 'youdao://query?word={text}',
     }));
     const migrated = await store.readPersistent();
-    assert.equal(migrated.schemaVersion, 9);
+    assert.equal(migrated.schemaVersion, 10);
     assert.equal(migrated.targetMode, 'custom');
     assert.equal(migrated.customTargetUrlTemplate, 'youdao://query?word={text}');
     assert.equal('targetUrlTemplate' in migrated, false);
@@ -79,6 +79,26 @@ test('migrates schema 8 target URL settings', async () => {
     const defaultMigration = await store.readPersistent();
     assert.equal(defaultMigration.targetMode, 'goldendict');
     assert.equal(defaultMigration.customTargetUrlTemplate, '');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('persists the system language when upgrading a config without uiLanguage', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'select-bridge-language-migration-'));
+  const path = join(directory, 'config.json');
+  const store = new ConfigStore(path, 'zh-CN');
+  try {
+    await writeFile(path, JSON.stringify({
+      ...DEFAULT_CONFIG,
+      schemaVersion: 9,
+      uiLanguage: undefined,
+    }), 'utf8');
+    const migrated = await store.load();
+    const saved = JSON.parse(await readFile(path, 'utf8'));
+    assert.equal(migrated.uiLanguage, 'zh-CN');
+    assert.equal(saved.uiLanguage, 'zh-CN');
+    assert.equal(saved.schemaVersion, 10);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -116,6 +136,24 @@ test('merges one tray field with external edits and removes the legacy target fi
     assert.equal(saved.enabled, false);
     assert.equal(saved.dotSize, 24);
     assert.equal('targetUrlTemplate' in saved, false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('serializes concurrent read-merge-write operations without losing fields', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'select-bridge-concurrent-merge-'));
+  const path = join(directory, 'config.json');
+  const store = new ConfigStore(path);
+  try {
+    await store.save({ ...DEFAULT_CONFIG, enabled: false, dotSize: 16 });
+    await Promise.all([
+      store.mergePersistent({ enabled: true }),
+      store.mergePersistent({ dotSize: 24 }),
+    ]);
+    const saved = JSON.parse(await readFile(path, 'utf8'));
+    assert.equal(saved.enabled, true);
+    assert.equal(saved.dotSize, 24);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

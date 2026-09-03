@@ -22,6 +22,10 @@ export class HeadlessHost implements PlatformHost {
 
   async stop(): Promise<void> {}
 
+  getSystemUiLanguage(): string {
+    return Intl.DateTimeFormat().resolvedOptions().locale;
+  }
+
   updateState(_state: PlatformState): void {}
 
   showIndicator(_options: IndicatorOptions): void {}

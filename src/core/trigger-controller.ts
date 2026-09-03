@@ -168,6 +168,7 @@ export class TriggerController {
       case 'toggle-auto-start':
       case 'set-target-mode':
       case 'save-target-url':
+      case 'set-ui-language':
       case 'open-config-file':
       case 'open-config-directory':
       case 'reload-config':

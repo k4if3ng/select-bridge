@@ -3,6 +3,7 @@ const addon = require('../native/win32/build/Release/select_bridge_win32_ui.node
 const expectedExports = [
   'hideIndicator',
   'completeTargetUrlSave',
+  'getSystemUiLanguage',
   'openExternalUrl',
   'openPath',
   'registerShortcut',

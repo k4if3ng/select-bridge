@@ -22,6 +22,12 @@ napi_value CreateUndefined(napi_env env) {
   return result;
 }
 
+napi_value CreateString(napi_env env, const std::string& value) {
+  napi_value result = nullptr;
+  napi_create_string_utf8(env, value.c_str(), value.size(), &result);
+  return result;
+}
+
 napi_value CreateShortcutResult(napi_env env, const Win32Host::ShortcutResult& registration) {
   napi_value result = nullptr;
   napi_value ok = nullptr;
@@ -146,8 +152,8 @@ napi_value Stop(napi_env env, napi_callback_info) {
 }
 
 napi_value UpdateTray(napi_env env, napi_callback_info info) {
-  size_t count = 10;
-  napi_value arguments[10]{};
+  size_t count = 11;
+  napi_value arguments[11]{};
   napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
 
   bool enabled = true;
@@ -160,7 +166,8 @@ napi_value UpdateTray(napi_env env, napi_callback_info info) {
   std::string target_mode;
   std::string custom_target_url;
   std::string target_override_source;
-  if (count != 10 || !GetBoolean(env, arguments[0], &enabled) ||
+  std::string ui_language;
+  if (count != 11 || !GetBoolean(env, arguments[0], &enabled) ||
       !GetUtf8(env, arguments[1], &trigger_mode) ||
       !GetBoolean(env, arguments[2], &auto_start) ||
       !GetUtf8(env, arguments[3], &indicator_action) ||
@@ -169,7 +176,8 @@ napi_value UpdateTray(napi_env env, napi_callback_info info) {
       !GetUtf8(env, arguments[6], &custom_shortcut) ||
       !GetUtf8(env, arguments[7], &target_mode) ||
       !GetUtf8(env, arguments[8], &custom_target_url) ||
-      !GetUtf8(env, arguments[9], &target_override_source)) {
+      !GetUtf8(env, arguments[9], &target_override_source) ||
+      !GetUtf8(env, arguments[10], &ui_language)) {
     ThrowLastError(env, "updateTray received invalid arguments");
     return nullptr;
   }
@@ -185,7 +193,12 @@ napi_value UpdateTray(napi_env env, napi_callback_info info) {
                                    custom_shortcut,
                                    target_mode,
                                    custom_target_url,
-                                   target_override_source));
+                                   target_override_source,
+                                   ui_language));
+}
+
+napi_value GetSystemUiLanguage(napi_env env, napi_callback_info) {
+  return CreateString(env, Win32Host::GetSystemUiLanguage());
 }
 
 napi_value ShowIndicator(napi_env env, napi_callback_info info) {
@@ -315,6 +328,7 @@ napi_value Initialize(napi_env env, napi_value exports) {
   const napi_property_descriptor properties[] = {
       {"start", nullptr, Start, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"stop", nullptr, Stop, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"getSystemUiLanguage", nullptr, GetSystemUiLanguage, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"updateTray", nullptr, UpdateTray, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"showIndicator", nullptr, ShowIndicator, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"hideIndicator", nullptr, HideIndicator, nullptr, nullptr, nullptr, napi_default, nullptr},

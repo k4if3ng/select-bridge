@@ -23,6 +23,7 @@ const WINDOWS_CAPABILITIES: PlatformCapabilities = {
 interface NativeAddon {
   start(callback: (type: string, value?: string) => void): boolean;
   stop(): void;
+  getSystemUiLanguage(): string;
   updateTray(
     enabled: boolean,
     triggerMode: string,
@@ -34,6 +35,7 @@ interface NativeAddon {
     targetMode: string,
     customTargetUrlTemplate: string,
     targetUrlOverrideSource: string,
+    uiLanguage: string,
   ): void;
   showIndicator(
     x: number | null,
@@ -81,6 +83,10 @@ export class WindowsNativeHost implements PlatformHost {
     this.addon.stop();
   }
 
+  getSystemUiLanguage(): string {
+    return this.addon.getSystemUiLanguage();
+  }
+
   updateState(state: PlatformState): void {
     this.addon.updateTray(
       state.enabled,
@@ -93,6 +99,7 @@ export class WindowsNativeHost implements PlatformHost {
       state.targetMode,
       state.customTargetUrlTemplate,
       state.targetUrlOverrideSource ?? '',
+      state.uiLanguage,
     );
   }
 
@@ -178,6 +185,7 @@ function toPlatformEvent(type: string, value?: string): PlatformEvent | undefine
     case 'native-error':
     case 'set-target-mode':
     case 'save-target-url':
+    case 'set-ui-language':
       return { type, value: value ?? '' };
     default:
       console.warn(`[platform] 未知原生事件：${type}`);
