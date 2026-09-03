@@ -84,7 +84,7 @@ Idle
 
 ## 平台抽象
 
-`PlatformHost` 提供生命周期、状态同步、指示器、系统协议打开、快捷键和开机启动能力，并通过 capabilities 声明实际支持项。操作系统和宿主模式是两个独立维度：`process.platform` 表示操作系统，`capabilities.hostMode` 表示当前宿主。运行参数先选择 `native` 或 `headless`，平台层再验证当前操作系统是否实现了该宿主。
+`PlatformHost` 提供生命周期、状态同步、指示器、系统协议/路径打开、原生设置结果回传、快捷键和开机启动能力，并通过 capabilities 声明实际支持项。操作系统和宿主模式是两个独立维度：`process.platform` 表示操作系统，`capabilities.hostMode` 表示当前宿主。运行参数先选择 `native` 或 `headless`，平台层再验证当前操作系统是否实现了该宿主。
 
 - `HeadlessHost` 可在 Windows、macOS 和 Linux 使用，不创建托盘或悬浮窗口；URL 交给通用系统打开器，自定义组合键由 `selection-hook` 的 `key-down`/`key-up` 事件匹配。
 - `WindowsNativeHost` 只在 Windows 提供，保留托盘、指示器、`RegisterHotKey` 冲突检测和开机启动。
@@ -101,5 +101,7 @@ URL 目标根据配置模板生成查询地址。模板中的 `{text}` 会被替
 ```text
 goldendict://{text}?target=popup
 ```
+
+配置 schema 9 用 `targetMode` 保存目标预设，用 `customTargetUrlTemplate` 保存自定义模板。`UrlTarget` 在每次查询时通过 getter 解析有效模板，因此托盘保存或重新加载后无需重建目标对象。有效值优先级为 CLI、环境变量、配置、默认 Goldendict-ng 模板。
 
 默认模板保持 Goldendict-ng popup 的兼容行为。系统 URL 打开器使用参数数组调用，不经过 shell 字符串拼接。新增翻译软件时可以配置新的 URL 模板或实现新的 `TranslationTarget`，不要把目标判断写进触发控制器。

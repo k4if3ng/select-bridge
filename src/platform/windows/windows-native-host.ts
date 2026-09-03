@@ -31,6 +31,9 @@ interface NativeAddon {
     iconSize: number,
     dotSize: number,
     customShortcut: string,
+    targetMode: string,
+    customTargetUrlTemplate: string,
+    targetUrlOverrideSource: string,
   ): void;
   showIndicator(
     x: number | null,
@@ -42,6 +45,9 @@ interface NativeAddon {
   ): void;
   hideIndicator(): void;
   openExternalUrl(url: string): boolean;
+  openPath(path: string): boolean;
+  completeTargetUrlSave(ok: boolean, message: string): void;
+  showError(title: string, message: string): void;
   registerShortcut(shortcut: string): ShortcutRegistrationResult;
   setAutoStart(enabled: boolean, executablePath: string, argumentsText: string): boolean;
 }
@@ -84,6 +90,9 @@ export class WindowsNativeHost implements PlatformHost {
       state.iconSize,
       state.dotSize,
       state.customShortcut,
+      state.targetMode,
+      state.customTargetUrlTemplate,
+      state.targetUrlOverrideSource ?? '',
     );
   }
 
@@ -104,6 +113,18 @@ export class WindowsNativeHost implements PlatformHost {
 
   openExternalUrl(url: string): boolean {
     return this.addon.openExternalUrl(url);
+  }
+
+  openPath(path: string): boolean {
+    return this.addon.openPath(path);
+  }
+
+  completeTargetUrlSave(ok: boolean, message = ''): void {
+    this.addon.completeTargetUrlSave(ok, message);
+  }
+
+  showError(title: string, message: string): void {
+    this.addon.showError(title, message);
   }
 
   registerShortcut(shortcut: string): ShortcutRegistrationResult {
@@ -141,7 +162,9 @@ function toPlatformEvent(type: string, value?: string): PlatformEvent | undefine
     case 'toggle-enabled':
     case 'toggle-auto-start':
     case 'shortcut':
-    case 'open-settings':
+    case 'open-config-file':
+    case 'open-config-directory':
+    case 'reload-config':
     case 'remove-custom-shortcut':
     case 'exit':
       return { type };
@@ -153,6 +176,8 @@ function toPlatformEvent(type: string, value?: string): PlatformEvent | undefine
     case 'set-custom-shortcut-and-activate':
     case 'shortcut-conflict':
     case 'native-error':
+    case 'set-target-mode':
+    case 'save-target-url':
       return { type, value: value ?? '' };
     default:
       console.warn(`[platform] 未知原生事件：${type}`);

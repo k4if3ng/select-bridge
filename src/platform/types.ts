@@ -1,4 +1,9 @@
-import type { HostMode, TriggerMode } from '../config.js';
+import type {
+  HostMode,
+  TargetMode,
+  TargetUrlOverrideSource,
+  TriggerMode,
+} from '../config.js';
 
 export interface IndicatorOptions {
   x?: number;
@@ -17,6 +22,9 @@ export interface PlatformState {
   iconSize: number;
   dotSize: number;
   customShortcut: string;
+  targetMode: TargetMode;
+  customTargetUrlTemplate: string;
+  targetUrlOverrideSource?: TargetUrlOverrideSource;
 }
 
 export interface ShortcutRegistrationResult {
@@ -48,7 +56,11 @@ export type PlatformEvent =
   | { type: 'shortcut' }
   | { type: 'shortcut-conflict'; value: string }
   | { type: 'native-error'; value: string }
-  | { type: 'open-settings' }
+  | { type: 'set-target-mode'; value: string }
+  | { type: 'save-target-url'; value: string }
+  | { type: 'open-config-file' }
+  | { type: 'open-config-directory' }
+  | { type: 'reload-config' }
   | { type: 'exit' };
 
 export interface PlatformHost {
@@ -59,6 +71,9 @@ export interface PlatformHost {
   showIndicator(options: IndicatorOptions): void;
   hideIndicator(): void;
   openExternalUrl(url: string): boolean;
+  openPath(path: string): boolean;
+  completeTargetUrlSave(ok: boolean, message?: string): void;
+  showError(title: string, message: string): void;
   registerShortcut(shortcut: string): ShortcutRegistrationResult;
   setAutoStart(enabled: boolean): Promise<boolean>;
 }

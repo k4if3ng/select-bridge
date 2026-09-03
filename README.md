@@ -68,7 +68,7 @@ headless 模式不创建托盘、设置窗口或悬浮指示器；查询由系�
 2. 在任意支持文本选区的应用中选中文字；
 3. 按默认的 **immediate** 模式，SelectBridge 会自动打开 Goldendict-ng 查询弹窗。
 
-Windows 可通过右键托盘图标暂停监听、切换触发方式、调整指示器、设置快捷键或退出程序。
+Windows 可通过左键或右键打开同一个托盘上下文菜单，暂停监听、切换查询目标和触发方式、调整指示器、设置快捷键或退出程序。
 
 ## 触发方式
 
@@ -95,12 +95,17 @@ Windows 的图标和圆点模式都可以选择 `click` 或 `hover`：
 
 | 选项 | 默认值 | 作用 |
 | --- | ---: | --- |
-| 启用选词监听 | 开启 | 暂停或恢复全局选区监听 |
+| 启用选词转发 | 开启 | 暂停或恢复全局选区监听 |
+| 查询目标 | Goldendict-ng 弹窗 | 在默认目标和已保存的自定义 URL 之间切换 |
 | 触发方式 | `immediate` | 选择自动、指示器、修饰键或自定义快捷键 |
 | 指示器动作 | `click` | 图标/圆点使用点击还是悬浮触发 |
 | 图标大小 | `32 px` | 可选 24/28/32/36/40 px |
 | 圆点大小 | `16 px` | 可选 12/16/20/24/28 px |
 | 开机启动 | 关闭 | 当前 Windows 用户登录后自动启动 |
+
+“查询目标 → 设置自定义 URL…”会打开轻量原生编辑窗口。模板必须以合法 URI scheme 开头，长度不超过 2048 个字符，不能包含空白或控制字符，并且必须且只能包含一个 `{text}`。保存成功后会立即切换为自定义 URL；切回 Goldendict-ng 不会删除已保存模板。
+
+“高级”子菜单可以打开配置文件、打开配置目录或重新加载配置。托盘保存前会重新读取磁盘文件并只合并本次变更；如果 JSON 已损坏，程序会保留运行中的旧状态并显示错误，不会覆盖文件。
 
 ### 配置文件位置
 
@@ -108,7 +113,7 @@ Windows 的图标和圆点模式都可以选择 `click` 或 `hover`：
 - Portable：`<便携目录>\data\config.json`
 - 其他平台开发环境：`$XDG_CONFIG_HOME/select-bridge/config.json` 或 `~/.config/select-bridge/config.json`
 
-可通过 `SELECT_BRIDGE_CONFIG` 指定自定义配置文件路径。程序会自动补全缺失字段并迁移旧版本配置。
+可通过 `SELECT_BRIDGE_CONFIG` 指定自定义配置文件路径。程序会自动补全缺失字段并把 schema 8 的 `targetUrlTemplate` 迁移为 schema 9 的 `targetMode` 与 `customTargetUrlTemplate`。
 
 ### 命令行覆盖
 
@@ -124,7 +129,7 @@ pnpm start -- --host=native
 pnpm start -- --target-url="youdao://query?word={text}"
 ```
 
-目标 URL 模板中的 `{text}` 会替换为经过 `encodeURIComponent` 编码的选中文字。默认模板为 `goldendict://{text}?target=popup`；`--target-url` 和 `SELECT_BRIDGE_TARGET_URL` 只覆盖本次运行，不修改配置文件。
+目标 URL 模板中的 `{text}` 会替换为经过 `encodeURIComponent` 编码的选中文字。默认模板为 `goldendict://{text}?target=popup`；`--target-url` 的优先级高于 `SELECT_BRIDGE_TARGET_URL`，二者只覆盖本次运行、不修改配置文件。存在运行时覆盖时，托盘中的目标切换项会禁用，URL 窗口以只读方式显示有效覆盖值及来源。
 
 高级数值配置也支持环境变量覆盖：
 
@@ -147,7 +152,7 @@ pnpm start -- --target-url="youdao://query?word={text}"
 
 ### 选中文字后没有反应
 
-1. 确认 SelectBridge 仍在运行；Windows 同时确认托盘中的“启用选词监听”已打开；
+1. 确认 SelectBridge 仍在运行；Windows 同时确认托盘中的“启用选词转发”已打开；
 2. 确认 Goldendict-ng 已启动过，并且系统能处理 `goldendict://` 协议；
 3. 如果使用 `ctrl`、`alt`、`shift` 或 `custom`，按对应的触发键；
 4. 选区超过 `SELECT_BRIDGE_MAX_LENGTH`（默认 200 个字符）时会被忽略。
@@ -177,7 +182,7 @@ headless 模式不会显示冲突提示；它观察全局键盘事件并匹配�
 
 构建完整 Windows 托盘宿主还需要：
 
-- Windows x64；
+- Windows x64 或 Windows ARM64；
 - Windows SDK；
 - Visual Studio/Build Tools 的“使用 C++ 的桌面开发”；
 - Python 3，并确保当前环境可以直接执行 `python`。

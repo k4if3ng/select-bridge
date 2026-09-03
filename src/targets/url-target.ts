@@ -9,12 +9,12 @@ export class UrlTarget implements TranslationTarget {
   readonly name = 'Configured URL';
 
   constructor(
-    private readonly template: string,
+    private readonly getTemplate: () => string,
     private readonly nativeOpenExternalUrl?: (url: string) => boolean,
   ) {}
 
   async translate(text: string): Promise<void> {
-    const url = this.template.replace(TEXT_PLACEHOLDER, encodeURIComponent(text));
+    const url = this.getTemplate().replace(TEXT_PLACEHOLDER, encodeURIComponent(text));
     if (this.nativeOpenExternalUrl?.(url)) {
       return;
     }

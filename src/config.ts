@@ -15,6 +15,9 @@ export const TRIGGER_MODES = [
 ] as const;
 export type TriggerMode = (typeof TRIGGER_MODES)[number];
 export type IndicatorAction = 'click' | 'hover';
+export const TARGET_MODES = ['goldendict', 'custom'] as const;
+export type TargetMode = (typeof TARGET_MODES)[number];
+export type TargetUrlOverrideSource = 'cli' | 'environment';
 
 export const HOST_MODES = ['native', 'headless'] as const;
 export type HostMode = (typeof HOST_MODES)[number];
@@ -35,18 +38,20 @@ export interface AppConfig {
   dotSize: number;
   customShortcut: string;
   autoStart: boolean;
-  targetUrlTemplate: string;
+  targetMode: TargetMode;
+  customTargetUrlTemplate: string;
 }
 
 export interface RuntimeOptions {
   triggerMode?: TriggerMode;
   customShortcut?: string;
   hostMode?: HostMode;
-  targetUrlTemplate?: string;
+  targetUrlOverride?: string;
+  targetUrlOverrideSource?: TargetUrlOverrideSource;
 }
 
 export const DEFAULT_CONFIG: Readonly<AppConfig> = {
-  schemaVersion: 8,
+  schemaVersion: 9,
   enabled: true,
   triggerMode: 'immediate',
   indicatorAction: 'click',
@@ -59,7 +64,8 @@ export const DEFAULT_CONFIG: Readonly<AppConfig> = {
   dotSize: 16,
   customShortcut: 'Ctrl+Alt+G',
   autoStart: false,
-  targetUrlTemplate: DEFAULT_TARGET_URL_TEMPLATE,
+  targetMode: 'goldendict',
+  customTargetUrlTemplate: '',
 };
 
 export class ConfigStore {
@@ -71,20 +77,52 @@ export class ConfigStore {
   }
 
   async load(): Promise<AppConfig> {
-    let stored: unknown;
-
     try {
-      stored = JSON.parse(await readFile(this.path, 'utf8')) as unknown;
+      return applyEnvironment(await this.readPersistent());
     } catch (error: unknown) {
-      if (isNodeError(error) && error.code === 'ENOENT') {
-        return applyEnvironment(DEFAULT_CONFIG);
-      }
-
       console.warn(`[config] 无法读取 ${this.path}，使用默认配置。`, error);
       return applyEnvironment(DEFAULT_CONFIG);
     }
+  }
 
-    return applyEnvironment(sanitizeConfig(stored));
+  async readPersistent(): Promise<AppConfig> {
+    try {
+      return sanitizeConfig(JSON.parse(await readFile(this.path, 'utf8')) as unknown);
+    } catch (error: unknown) {
+      if (isNodeError(error) && error.code === 'ENOENT') {
+        return { ...DEFAULT_CONFIG };
+      }
+      throw error;
+    }
+  }
+
+  async ensureExists(): Promise<void> {
+    try {
+      await readFile(this.path, 'utf8');
+    } catch (error: unknown) {
+      if (!isNodeError(error) || error.code !== 'ENOENT') {
+        throw error;
+      }
+      await this.save({ ...DEFAULT_CONFIG });
+    }
+  }
+
+  async mergePersistent(patch: Partial<AppConfig>): Promise<AppConfig> {
+    let stored: unknown = { ...DEFAULT_CONFIG };
+    try {
+      stored = JSON.parse(await readFile(this.path, 'utf8')) as unknown;
+    } catch (error: unknown) {
+      if (!isNodeError(error) || error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+
+    const storedRecord = isRecord(stored) ? stored : {};
+    const updated = sanitizeConfig({ ...storedRecord, ...patch, schemaVersion: 9 });
+    const persistedRecord: Record<string, unknown> = { ...storedRecord, ...updated };
+    delete persistedRecord.targetUrlTemplate;
+    await this.save(persistedRecord as unknown as AppConfig);
+    return updated;
   }
 
   async save(config: AppConfig): Promise<void> {
@@ -129,16 +167,23 @@ export function loadRuntimeOptions(argv: string[]): RuntimeOptions {
   const hostValue = argv
     .find((argument) => argument.startsWith('--host='))
     ?.slice('--host='.length);
-  const targetUrlTemplate = argv
+  const cliTargetUrl = argv
     .find((argument) => argument.startsWith('--target-url='))
     ?.slice('--target-url='.length)
     .trim();
+  const environmentTargetUrl = process.env.SELECT_BRIDGE_TARGET_URL?.trim();
+  const targetUrlOverride = cliTargetUrl || environmentTargetUrl || undefined;
 
   return {
     triggerMode: isTriggerMode(triggerValue) ? triggerValue : undefined,
     customShortcut: customShortcut || undefined,
     hostMode: resolveRuntimeHostMode(argv, hostValue),
-    targetUrlTemplate: targetUrlTemplate || undefined,
+    targetUrlOverride,
+    targetUrlOverrideSource: cliTargetUrl
+      ? 'cli'
+      : environmentTargetUrl
+        ? 'environment'
+        : undefined,
   };
 }
 
@@ -148,6 +193,10 @@ export function isTriggerMode(value: unknown): value is TriggerMode {
 
 export function isHostMode(value: unknown): value is HostMode {
   return typeof value === 'string' && (HOST_MODES as readonly string[]).includes(value);
+}
+
+export function isTargetMode(value: unknown): value is TargetMode {
+  return typeof value === 'string' && (TARGET_MODES as readonly string[]).includes(value);
 }
 
 function resolveRuntimeHostMode(
@@ -232,17 +281,16 @@ function sanitizeConfig(value: unknown): AppConfig {
       : getBoundedInteger(value.dotSize, DEFAULT_CONFIG.dotSize, 12, 28),
     customShortcut,
     autoStart: getBoolean(value.autoStart, DEFAULT_CONFIG.autoStart),
-    targetUrlTemplate: getTargetUrlTemplate(value.targetUrlTemplate),
+    ...migrateTargetConfig(value),
   };
 }
 
-function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
+export function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
   const customShortcut =
     process.env.SELECT_BRIDGE_SHORTCUT?.trim() || config.customShortcut;
   const requestedTriggerMode = isTriggerMode(process.env.SELECT_BRIDGE_TRIGGER_MODE)
     ? process.env.SELECT_BRIDGE_TRIGGER_MODE
     : config.triggerMode;
-  const targetUrlTemplate = process.env.SELECT_BRIDGE_TARGET_URL?.trim();
   return {
     ...config,
     maxTextLength: getEnvironmentInteger(
@@ -282,15 +330,16 @@ function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
       requestedTriggerMode === 'custom' && !customShortcut
         ? 'immediate'
         : requestedTriggerMode,
-    targetUrlTemplate:
-      targetUrlTemplate && isTargetUrlTemplate(targetUrlTemplate)
-        ? targetUrlTemplate
-        : config.targetUrlTemplate,
   };
 }
 
 export function isTargetUrlTemplate(value: unknown): value is string {
-  if (typeof value !== 'string' || value.length === 0 || value.trim() !== value) {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 2048 ||
+    value.trim() !== value
+  ) {
     return false;
   }
 
@@ -344,8 +393,31 @@ function getPositiveInteger(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : fallback;
 }
 
-function getTargetUrlTemplate(value: unknown): string {
-  return isTargetUrlTemplate(value) ? value : DEFAULT_CONFIG.targetUrlTemplate;
+export function resolveConfiguredTargetTemplate(config: Readonly<AppConfig>): string {
+  return config.targetMode === 'custom' && isTargetUrlTemplate(config.customTargetUrlTemplate)
+    ? config.customTargetUrlTemplate
+    : DEFAULT_TARGET_URL_TEMPLATE;
+}
+
+function migrateTargetConfig(
+  value: Record<string, unknown>,
+): Pick<AppConfig, 'targetMode' | 'customTargetUrlTemplate'> {
+  if (isTargetMode(value.targetMode)) {
+    const customTargetUrlTemplate = isTargetUrlTemplate(value.customTargetUrlTemplate)
+      ? value.customTargetUrlTemplate
+      : '';
+    return {
+      targetMode:
+        value.targetMode === 'custom' && !customTargetUrlTemplate ? 'goldendict' : value.targetMode,
+      customTargetUrlTemplate,
+    };
+  }
+
+  const legacyTemplate = value.targetUrlTemplate;
+  if (isTargetUrlTemplate(legacyTemplate) && legacyTemplate !== DEFAULT_TARGET_URL_TEMPLATE) {
+    return { targetMode: 'custom', customTargetUrlTemplate: legacyTemplate };
+  }
+  return { targetMode: 'goldendict', customTargetUrlTemplate: '' };
 }
 
 function getMigratedTiming(value: unknown, previousDefault: number, currentDefault: number): number {

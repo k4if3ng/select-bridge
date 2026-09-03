@@ -7,7 +7,9 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <cwchar>
+#include <cwctype>
 #include <memory>
 #include <sstream>
 #include <utility>
@@ -18,6 +20,7 @@ namespace {
 constexpr wchar_t kOwnerClassName[] = L"SelectBridge.NativeHost";
 constexpr wchar_t kIndicatorClassName[] = L"SelectBridge.Indicator";
 constexpr wchar_t kShortcutClassName[] = L"SelectBridge.ShortcutCapture";
+constexpr wchar_t kTargetUrlClassName[] = L"SelectBridge.TargetUrl";
 constexpr wchar_t kTrayTooltip[] = L"SelectBridge";
 constexpr wchar_t kRunKeyPath[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 constexpr wchar_t kRunValueName[] = L"SelectBridge";
@@ -29,6 +32,8 @@ constexpr UINT kHideIndicatorMessage = WM_APP + 3;
 constexpr UINT kUpdateTrayMessage = WM_APP + 4;
 constexpr UINT kStopMessage = WM_APP + 5;
 constexpr UINT kRegisterShortcutMessage = WM_APP + 6;
+constexpr UINT kTargetUrlSaveResultMessage = WM_APP + 7;
+constexpr UINT kShowErrorMessage = WM_APP + 8;
 constexpr UINT kEditSetCueBannerMessage = 0x1501;
 constexpr UINT_PTR kHoverTimerId = 1;
 constexpr int kHotkeyId = 0x5346;
@@ -57,6 +62,12 @@ constexpr UINT kCommandDotSize16 = 1511;
 constexpr UINT kCommandDotSize20 = 1512;
 constexpr UINT kCommandDotSize24 = 1513;
 constexpr UINT kCommandDotSize28 = 1514;
+constexpr UINT kCommandTargetGoldendict = 1520;
+constexpr UINT kCommandTargetCustom = 1521;
+constexpr UINT kCommandSetTargetUrl = 1522;
+constexpr UINT kCommandOpenConfigFile = 1530;
+constexpr UINT kCommandOpenConfigDirectory = 1531;
+constexpr UINT kCommandReloadConfig = 1532;
 constexpr UINT kShortcutInstructions = 1600;
 constexpr UINT kShortcutFieldLabel = 1601;
 constexpr UINT kShortcutValueEdit = 1602;
@@ -64,6 +75,13 @@ constexpr UINT kShortcutStatusLabel = 1603;
 constexpr UINT kShortcutRemoveButton = 1604;
 constexpr UINT kShortcutCancelButton = 1605;
 constexpr UINT kShortcutSaveButton = 1606;
+constexpr UINT kTargetUrlInstructions = 1700;
+constexpr UINT kTargetUrlFieldLabel = 1701;
+constexpr UINT kTargetUrlEdit = 1702;
+constexpr UINT kTargetUrlStatusLabel = 1703;
+constexpr UINT kTargetUrlCopyButton = 1704;
+constexpr UINT kTargetUrlCancelButton = 1705;
+constexpr UINT kTargetUrlSaveButton = 1706;
 
 constexpr COLORREF kIndicatorColor = RGB(31, 111, 235);
 constexpr COLORREF kIndicatorBackgroundColor = RGB(255, 255, 255);
@@ -376,6 +394,47 @@ std::wstring Utf8ToWideLocal(const std::string& value) {
   return result;
 }
 
+std::string WideToUtf8Local(const std::wstring& value) {
+  if (value.empty()) return {};
+  const int size = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()),
+                                       nullptr, 0, nullptr, nullptr);
+  std::string result(size, '\0');
+  WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()),
+                      result.data(), size, nullptr, nullptr);
+  return result;
+}
+
+bool IsValidTargetUrl(const std::wstring& value) {
+  if (value.empty() || value.size() > 2048) return false;
+  size_t placeholder_count = 0;
+  size_t position = 0;
+  while ((position = value.find(L"{text}", position)) != std::wstring::npos) {
+    ++placeholder_count;
+    position += 6;
+  }
+  if (placeholder_count != 1 ||
+      !((value[0] >= L'A' && value[0] <= L'Z') || (value[0] >= L'a' && value[0] <= L'z'))) {
+    return false;
+  }
+  size_t scheme_end = 1;
+  while (scheme_end < value.size() && value[scheme_end] != L':') {
+    const wchar_t character = value[scheme_end];
+    const bool ascii_alphanumeric =
+        (character >= L'A' && character <= L'Z') ||
+        (character >= L'a' && character <= L'z') ||
+        (character >= L'0' && character <= L'9');
+    if (!ascii_alphanumeric && character != L'+' && character != L'.' && character != L'-') {
+      return false;
+    }
+    ++scheme_end;
+  }
+  if (scheme_end >= value.size() || value[scheme_end] != L':') return false;
+  for (wchar_t character : value) {
+    if (iswspace(character) || character < 0x20 || character == 0x7f) return false;
+  }
+  return true;
+}
+
 UINT GetWindowDpiCompat(HWND window) {
   using GetDpiForWindowFunction = UINT(WINAPI*)(HWND);
   auto* function = reinterpret_cast<GetDpiForWindowFunction>(
@@ -441,6 +500,9 @@ struct Win32Host::TrayStateRequest {
   int icon_size;
   int dot_size;
   std::string custom_shortcut;
+  std::string target_mode;
+  std::string custom_target_url;
+  std::string target_override_source;
 };
 
 struct Win32Host::ShortcutRequest {
@@ -451,6 +513,16 @@ struct Win32Host::ShortcutRequest {
 struct Win32Host::EventPayload {
   std::string type;
   std::string value;
+};
+
+struct Win32Host::TargetSaveResult {
+  bool ok;
+  std::string message;
+};
+
+struct Win32Host::ErrorRequest {
+  std::string title;
+  std::string message;
 };
 
 Win32Host::Win32Host(napi_env env, napi_value callback) : env_(env) {
@@ -555,7 +627,10 @@ bool Win32Host::UpdateTray(bool enabled,
                            const std::string& indicator_action,
                            int icon_size,
                            int dot_size,
-                           const std::string& custom_shortcut) {
+                           const std::string& custom_shortcut,
+                           const std::string& target_mode,
+                           const std::string& custom_target_url,
+                           const std::string& target_override_source) {
   if (!owner_window_ || stopping_) {
     return false;
   }
@@ -568,6 +643,9 @@ bool Win32Host::UpdateTray(bool enabled,
   request->icon_size = std::clamp(icon_size, 24, 40);
   request->dot_size = std::clamp(dot_size, 12, 28);
   request->custom_shortcut = custom_shortcut;
+  request->target_mode = target_mode;
+  request->custom_target_url = custom_target_url;
+  request->target_override_source = target_override_source;
   if (!PostMessageW(owner_window_, kUpdateTrayMessage, 0, reinterpret_cast<LPARAM>(request.get()))) {
     return false;
   }
@@ -615,6 +693,32 @@ Win32Host::ShortcutResult Win32Host::RegisterShortcut(const std::string& shortcu
                0,
                reinterpret_cast<LPARAM>(&request));
   return request.result;
+}
+
+bool Win32Host::CompleteTargetUrlSave(bool ok, const std::string& message) {
+  if (!owner_window_ || stopping_) return false;
+  auto request = std::make_unique<TargetSaveResult>();
+  request->ok = ok;
+  request->message = message;
+  if (!PostMessageW(owner_window_, kTargetUrlSaveResultMessage, 0,
+                    reinterpret_cast<LPARAM>(request.get()))) {
+    return false;
+  }
+  request.release();
+  return true;
+}
+
+bool Win32Host::ShowError(const std::string& title, const std::string& message) {
+  if (!owner_window_ || stopping_) return false;
+  auto request = std::make_unique<ErrorRequest>();
+  request->title = title;
+  request->message = message;
+  if (!PostMessageW(owner_window_, kShowErrorMessage, 0,
+                    reinterpret_cast<LPARAM>(request.get()))) {
+    return false;
+  }
+  request.release();
+  return true;
 }
 
 bool Win32Host::SetAutoStart(bool enabled,
@@ -687,6 +791,12 @@ bool Win32Host::OpenExternalUrl(const std::wstring& url) {
   return reinterpret_cast<INT_PTR>(result) > 32;
 }
 
+bool Win32Host::OpenPath(const std::wstring& path) {
+  if (path.empty()) return false;
+  const HINSTANCE result = ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+  return reinterpret_cast<INT_PTR>(result) > 32;
+}
+
 DWORD WINAPI Win32Host::ThreadEntry(void* parameter) {
   return static_cast<Win32Host*>(parameter)->ThreadMain();
 }
@@ -730,6 +840,16 @@ DWORD Win32Host::ThreadMain() {
                            message.lParam);
         continue;
       }
+      const bool target_key_message =
+          target_url_window_ &&
+          (message.message == WM_KEYDOWN || message.message == WM_SYSKEYDOWN) &&
+          (message.hwnd == target_url_window_ || IsChild(target_url_window_, message.hwnd)) &&
+          (message.wParam == VK_ESCAPE || message.wParam == VK_RETURN || message.wParam == VK_TAB ||
+           (message.wParam == VK_F4 && IsVirtualKeyDown(VK_MENU)));
+      if (target_key_message) {
+        TargetUrlWindowProc(target_url_window_, message.message, message.wParam, message.lParam);
+        continue;
+      }
       TranslateMessage(&message);
       DispatchMessageW(&message);
     }
@@ -738,6 +858,7 @@ DWORD Win32Host::ThreadMain() {
   RemoveTrayIcon();
   DestroyWindows();
   UnregisterClassW(kShortcutClassName, instance_);
+  UnregisterClassW(kTargetUrlClassName, instance_);
   UnregisterClassW(kIndicatorClassName, instance_);
   UnregisterClassW(kOwnerClassName, instance_);
 
@@ -772,8 +893,16 @@ bool Win32Host::RegisterWindowClasses() {
   shortcut_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
   shortcut_class.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
 
+  WNDCLASSEXW target_url_class{};
+  target_url_class.cbSize = sizeof(target_url_class);
+  target_url_class.hInstance = instance_;
+  target_url_class.lpfnWndProc = TargetUrlWindowProc;
+  target_url_class.lpszClassName = kTargetUrlClassName;
+  target_url_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+  target_url_class.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
+
   return RegisterClassExW(&owner_class) && RegisterClassExW(&indicator_class) &&
-         RegisterClassExW(&shortcut_class);
+         RegisterClassExW(&shortcut_class) && RegisterClassExW(&target_url_class);
 }
 
 bool Win32Host::CreateWindows() {
@@ -812,6 +941,7 @@ bool Win32Host::CreateWindows() {
 void Win32Host::DestroyWindows() {
   ClearShortcut();
   CloseShortcutCapture();
+  CloseTargetUrlEditor();
   if (indicator_window_) {
     DestroyWindow(indicator_window_);
     indicator_window_ = nullptr;
@@ -857,8 +987,12 @@ void Win32Host::ShowTrayMenu() {
   HMENU indicator_action_menu = CreatePopupMenu();
   HMENU icon_size_menu = CreatePopupMenu();
   HMENU dot_size_menu = CreatePopupMenu();
+  HMENU target_menu = CreatePopupMenu();
+  HMENU advanced_menu = CreatePopupMenu();
   if (!menu || !trigger_menu || !indicator_action_menu || !icon_size_menu ||
-      !dot_size_menu) {
+      !dot_size_menu || !target_menu || !advanced_menu) {
+    if (advanced_menu) DestroyMenu(advanced_menu);
+    if (target_menu) DestroyMenu(target_menu);
     if (dot_size_menu) DestroyMenu(dot_size_menu);
     if (icon_size_menu) DestroyMenu(icon_size_menu);
     if (indicator_action_menu) DestroyMenu(indicator_action_menu);
@@ -870,8 +1004,29 @@ void Win32Host::ShowTrayMenu() {
   AppendMenuW(menu,
               MF_STRING | (enabled_ ? MF_CHECKED : MF_UNCHECKED),
               kCommandToggleEnabled,
-              L"启用划词翻译");
+              L"启用选词转发");
   AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+
+  const bool target_locked = !target_override_source_.empty();
+  AppendMenuW(target_menu,
+              MF_STRING | (target_locked ? MF_GRAYED : MF_ENABLED),
+              kCommandTargetGoldendict,
+              L"Goldendict-ng 弹窗");
+  AppendMenuW(target_menu,
+              MF_STRING | (target_locked || custom_target_url_.empty() ? MF_GRAYED : MF_ENABLED),
+              kCommandTargetCustom,
+              L"自定义 URL");
+  CheckMenuRadioItem(target_menu,
+                     kCommandTargetGoldendict,
+                     kCommandTargetCustom,
+                     target_mode_ == "custom" ? kCommandTargetCustom : kCommandTargetGoldendict,
+                     MF_BYCOMMAND);
+  AppendMenuW(target_menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(target_menu, MF_STRING, kCommandSetTargetUrl, L"设置自定义 URL…");
+  AppendMenuW(menu,
+              MF_POPUP,
+              reinterpret_cast<UINT_PTR>(target_menu),
+              target_locked ? L"查询目标（运行参数覆盖）" : L"查询目标");
 
   AppendMenuW(trigger_menu, MF_STRING, kCommandImmediate, L"立即触发");
   AppendMenuW(trigger_menu, MF_SEPARATOR, 0, nullptr);
@@ -968,6 +1123,14 @@ void Win32Host::ShowTrayMenu() {
               MF_STRING | (auto_start_ ? MF_CHECKED : MF_UNCHECKED),
               kCommandToggleAutoStart,
               L"开机启动");
+  AppendMenuW(advanced_menu, MF_STRING, kCommandOpenConfigFile, L"打开配置文件");
+  AppendMenuW(advanced_menu, MF_STRING, kCommandOpenConfigDirectory, L"打开配置目录");
+  AppendMenuW(advanced_menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(advanced_menu, MF_STRING, kCommandReloadConfig, L"重新加载配置");
+  AppendMenuW(menu,
+              MF_POPUP,
+              reinterpret_cast<UINT_PTR>(advanced_menu),
+              L"高级");
   AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(menu, MF_STRING, kCommandExit, L"退出");
 
@@ -992,6 +1155,15 @@ void Win32Host::HandleTrayCommand(unsigned int command) {
   switch (command) {
     case kCommandToggleEnabled:
       SendEvent("toggle-enabled");
+      break;
+    case kCommandTargetGoldendict:
+      SendEvent("set-target-mode", "goldendict");
+      break;
+    case kCommandTargetCustom:
+      SendEvent("set-target-mode", "custom");
+      break;
+    case kCommandSetTargetUrl:
+      ShowTargetUrlEditor();
       break;
     case kCommandImmediate:
       SendEvent("set-trigger-mode", "immediate");
@@ -1053,6 +1225,15 @@ void Win32Host::HandleTrayCommand(unsigned int command) {
     case kCommandToggleAutoStart:
       SendEvent("toggle-auto-start");
       break;
+    case kCommandOpenConfigFile:
+      SendEvent("open-config-file");
+      break;
+    case kCommandOpenConfigDirectory:
+      SendEvent("open-config-directory");
+      break;
+    case kCommandReloadConfig:
+      SendEvent("reload-config");
+      break;
     case kCommandExit:
       SendEvent("exit");
       break;
@@ -1060,6 +1241,11 @@ void Win32Host::HandleTrayCommand(unsigned int command) {
 }
 
 void Win32Host::ShowShortcutCapture(bool activate_after_save) {
+  if (target_url_window_) {
+    ShowWindow(target_url_window_, SW_RESTORE);
+    SetForegroundWindow(target_url_window_);
+    return;
+  }
   if (shortcut_window_) {
     shortcut_activate_after_save_ = shortcut_activate_after_save_ || activate_after_save;
     ShowWindow(shortcut_window_, SW_RESTORE);
@@ -1438,6 +1624,225 @@ void Win32Host::RemoveCapturedShortcut() {
   CloseShortcutCapture();
 }
 
+void Win32Host::ShowTargetUrlEditor() {
+  if (shortcut_window_) {
+    ShowWindow(shortcut_window_, SW_RESTORE);
+    SetForegroundWindow(shortcut_window_);
+    return;
+  }
+  if (target_url_window_) {
+    ShowWindow(target_url_window_, SW_RESTORE);
+    SetForegroundWindow(target_url_window_);
+    SetFocus(target_url_edit_ ? target_url_edit_ : target_url_window_);
+    return;
+  }
+
+  if (target_url_save_pending_) {
+    MessageBoxW(owner_window_, L"自定义 URL 正在保存，请稍候。", L"设置自定义 URL",
+                MB_OK | MB_ICONINFORMATION);
+    return;
+  }
+
+  constexpr DWORD extended_style = WS_EX_CONTROLPARENT;
+  constexpr DWORD window_style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
+  target_url_window_ = CreateWindowExW(extended_style,
+                                       kTargetUrlClassName,
+                                       L"设置自定义 URL",
+                                       window_style,
+                                       CW_USEDEFAULT,
+                                       CW_USEDEFAULT,
+                                       600,
+                                       300,
+                                       owner_window_,
+                                       nullptr,
+                                       instance_,
+                                       this);
+  if (!target_url_window_) return;
+
+  const UINT dpi = GetWindowDpiCompat(target_url_window_);
+  ResizeAndCenterWindow(target_url_window_, 540, 220, window_style, extended_style, dpi);
+  const bool locked = !target_override_source_.empty();
+  const wchar_t* instructions = locked
+      ? L"当前查询 URL 由运行参数覆盖。你可以复制有效值，但需要从启动参数或环境变量中修改。"
+      : L"使用一个 {text} 作为选中文本占位符。选中文本可能发送给对应应用或服务，请仅配置可信目标。";
+  target_url_instructions_ = CreateWindowExW(0, L"STATIC", instructions,
+      WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+      0, 0, 0, 0, target_url_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlInstructions)), instance_, nullptr);
+  target_url_field_label_ = CreateWindowExW(0, L"STATIC", L"URL 模板",
+      WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX,
+      0, 0, 0, 0, target_url_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlFieldLabel)), instance_, nullptr);
+  target_url_edit_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | (locked ? ES_READONLY : 0),
+      0, 0, 0, 0, target_url_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlEdit)), instance_, nullptr);
+  target_url_status_label_ = CreateWindowExW(0, L"STATIC", L"",
+      WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX,
+      0, 0, 0, 0, target_url_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlStatusLabel)), instance_, nullptr);
+  target_url_copy_button_ = CreateWindowExW(0, L"BUTTON", L"复制 URL",
+      WS_CHILD | (locked ? WS_VISIBLE : 0) | WS_TABSTOP | BS_PUSHBUTTON,
+      0, 0, 0, 0, target_url_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlCopyButton)), instance_, nullptr);
+  target_url_cancel_button_ = CreateWindowExW(0, L"BUTTON", locked ? L"关闭" : L"取消",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+      0, 0, 0, 0, target_url_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlCancelButton)), instance_, nullptr);
+  target_url_save_button_ = CreateWindowExW(0, L"BUTTON", L"保存",
+      WS_CHILD | (locked ? 0 : WS_VISIBLE) | WS_TABSTOP | BS_DEFPUSHBUTTON,
+      0, 0, 0, 0, target_url_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlSaveButton)), instance_, nullptr);
+
+  if (!target_url_instructions_ || !target_url_field_label_ || !target_url_edit_ ||
+      !target_url_status_label_ || !target_url_copy_button_ || !target_url_cancel_button_ ||
+      !target_url_save_button_) {
+    CloseTargetUrlEditor();
+    return;
+  }
+  SendMessageW(target_url_edit_, EM_SETLIMITTEXT, 2048, 0);
+  SendMessageW(target_url_edit_, kEditSetCueBannerMessage, TRUE,
+               reinterpret_cast<LPARAM>(L"例如：https://example.com/search?q={text}"));
+  const std::wstring current = Utf8ToWideLocal(custom_target_url_);
+  SetWindowTextW(target_url_edit_, current.c_str());
+  RecreateTargetUrlFont();
+  ApplyTargetUrlFont();
+  LayoutTargetUrlEditor();
+  UpdateTargetUrlValidation();
+  ShowWindow(target_url_window_, SW_SHOW);
+  SetForegroundWindow(target_url_window_);
+  SetFocus(locked ? target_url_copy_button_ : target_url_edit_);
+}
+
+void Win32Host::CloseTargetUrlEditor() {
+  if (target_url_window_) DestroyWindow(target_url_window_);
+}
+
+void Win32Host::LayoutTargetUrlEditor() {
+  if (!target_url_window_) return;
+  const UINT dpi = GetWindowDpiCompat(target_url_window_);
+  const auto scaled = [dpi](int value) { return ScaleForDpi(value, dpi); };
+  const auto position = [&](HWND control, int x, int y, int width, int height) {
+    if (control) SetWindowPos(control, nullptr, scaled(x), scaled(y), scaled(width), scaled(height),
+                              SWP_NOACTIVATE | SWP_NOZORDER);
+  };
+  position(target_url_instructions_, 24, 12, 492, 40);
+  position(target_url_field_label_, 24, 58, 492, 18);
+  position(target_url_edit_, 24, 80, 492, 30);
+  position(target_url_status_label_, 24, 116, 492, 34);
+  position(target_url_copy_button_, 252, 170, 80, 30);
+  position(target_url_cancel_button_, 344, 170, 80, 30);
+  position(target_url_save_button_, 436, 170, 80, 30);
+}
+
+void Win32Host::RecreateTargetUrlFont() {
+  if (target_url_font_) DeleteObject(target_url_font_);
+  target_url_font_ = nullptr;
+  NONCLIENTMETRICSW metrics{};
+  metrics.cbSize = sizeof(metrics);
+  using SystemParametersInfoForDpiFunction = BOOL(WINAPI*)(UINT, UINT, PVOID, UINT, UINT);
+  auto* system_parameters_for_dpi = reinterpret_cast<SystemParametersInfoForDpiFunction>(
+      GetProcAddress(GetModuleHandleW(L"user32.dll"), "SystemParametersInfoForDpi"));
+  const UINT dpi = target_url_window_ ? GetWindowDpiCompat(target_url_window_) : 96;
+  const BOOL loaded = system_parameters_for_dpi
+                          ? system_parameters_for_dpi(SPI_GETNONCLIENTMETRICS,
+                                                      sizeof(metrics), &metrics, 0, dpi)
+                          : SystemParametersInfoW(SPI_GETNONCLIENTMETRICS,
+                                                  sizeof(metrics), &metrics, 0);
+  if (loaded) {
+    target_url_font_ = CreateFontIndirectW(&metrics.lfMessageFont);
+  }
+}
+
+void Win32Host::ApplyTargetUrlFont() {
+  HFONT font = target_url_font_ ? target_url_font_
+                                : static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+  for (HWND control : {target_url_instructions_, target_url_field_label_, target_url_edit_,
+                       target_url_status_label_, target_url_copy_button_,
+                       target_url_cancel_button_, target_url_save_button_}) {
+    if (control) SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+  }
+}
+
+void Win32Host::UpdateTargetUrlValidation() {
+  if (!target_url_edit_) return;
+  if (!target_override_source_.empty()) {
+    const std::wstring source = target_override_source_ == "cli" ? L"命令行参数" : L"环境变量";
+    SetWindowTextW(target_url_status_label_, (L"覆盖来源：" + source).c_str());
+    return;
+  }
+  const int length = GetWindowTextLengthW(target_url_edit_);
+  std::wstring value(static_cast<size_t>(length) + 1, L'\0');
+  GetWindowTextW(target_url_edit_, value.data(), length + 1);
+  value.resize(static_cast<size_t>(length));
+  const bool valid = IsValidTargetUrl(value);
+  SetWindowTextW(target_url_status_label_, valid
+      ? L"格式有效；保存后将立即切换到自定义 URL。"
+      : L"需要合法 URI scheme、恰好一个 {text}，且不能包含空白或控制字符。");
+  EnableWindow(target_url_save_button_, valid && !target_url_save_pending_);
+}
+
+void Win32Host::SaveTargetUrl() {
+  if (!target_url_edit_ || !target_override_source_.empty() || target_url_save_pending_) return;
+  const int length = GetWindowTextLengthW(target_url_edit_);
+  std::wstring value(static_cast<size_t>(length) + 1, L'\0');
+  GetWindowTextW(target_url_edit_, value.data(), length + 1);
+  value.resize(static_cast<size_t>(length));
+  if (!IsValidTargetUrl(value)) {
+    UpdateTargetUrlValidation();
+    return;
+  }
+  target_url_save_pending_ = true;
+  pending_target_url_ = WideToUtf8Local(value);
+  EnableWindow(target_url_edit_, FALSE);
+  EnableWindow(target_url_save_button_, FALSE);
+  SetWindowTextW(target_url_status_label_, L"正在保存…");
+  SendEvent("save-target-url", pending_target_url_);
+}
+
+void Win32Host::CopyTargetUrl() {
+  if (!target_url_edit_ || !OpenClipboard(target_url_window_)) return;
+  const int length = GetWindowTextLengthW(target_url_edit_);
+  std::wstring value(static_cast<size_t>(length) + 1, L'\0');
+  GetWindowTextW(target_url_edit_, value.data(), length + 1);
+  EmptyClipboard();
+  HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, (value.size() + 1) * sizeof(wchar_t));
+  if (memory) {
+    void* data = GlobalLock(memory);
+    if (data) {
+      memcpy(data, value.data(), value.size() * sizeof(wchar_t));
+      static_cast<wchar_t*>(data)[value.size()] = L'\0';
+      GlobalUnlock(memory);
+      if (!SetClipboardData(CF_UNICODETEXT, memory)) GlobalFree(memory);
+    } else {
+      GlobalFree(memory);
+    }
+  }
+  CloseClipboard();
+}
+
+void Win32Host::ApplyTargetUrlSaveResult(bool ok, const std::string& message) {
+  target_url_save_pending_ = false;
+  if (ok) {
+    custom_target_url_ = pending_target_url_;
+    pending_target_url_.clear();
+    target_mode_ = "custom";
+    if (target_url_window_) CloseTargetUrlEditor();
+    return;
+  }
+  pending_target_url_.clear();
+  if (!target_url_window_) return;
+  EnableWindow(target_url_edit_, TRUE);
+  const std::wstring error = Utf8ToWideLocal(message.empty() ? "保存失败，请重试。" : message);
+  SetWindowTextW(target_url_status_label_, error.c_str());
+  const int length = GetWindowTextLengthW(target_url_edit_);
+  std::wstring value(static_cast<size_t>(length) + 1, L'\0');
+  GetWindowTextW(target_url_edit_, value.data(), length + 1);
+  value.resize(static_cast<size_t>(length));
+  EnableWindow(target_url_save_button_, IsValidTargetUrl(value));
+  SetFocus(target_url_edit_);
+}
+
 void Win32Host::ApplyIndicator(const IndicatorRequest& request) {
   if (!indicator_window_) {
     return;
@@ -1800,10 +2205,8 @@ LRESULT CALLBACK Win32Host::OwnerWindowProc(HWND window,
 
   switch (message) {
     case kTrayCallbackMessage:
-      if (lparam == WM_RBUTTONUP || lparam == WM_CONTEXTMENU) {
+      if (lparam == WM_RBUTTONUP || lparam == WM_CONTEXTMENU || lparam == WM_LBUTTONUP) {
         host->ShowTrayMenu();
-      } else if (lparam == WM_LBUTTONUP || lparam == WM_LBUTTONDBLCLK) {
-        host->SendEvent("open-settings");
       }
       return 0;
     case kShowIndicatorMessage: {
@@ -1824,6 +2227,9 @@ LRESULT CALLBACK Win32Host::OwnerWindowProc(HWND window,
       host->icon_size_ = request->icon_size;
       host->dot_size_ = request->dot_size;
       host->custom_shortcut_ = request->custom_shortcut;
+      host->target_mode_ = request->target_mode == "custom" ? "custom" : "goldendict";
+      host->custom_target_url_ = request->custom_target_url;
+      host->target_override_source_ = request->target_override_source;
       if (host->trigger_mode_ == "custom") {
         if (host->custom_shortcut_.empty()) {
           host->ClearShortcut();
@@ -1841,6 +2247,19 @@ LRESULT CALLBACK Win32Host::OwnerWindowProc(HWND window,
       }
       return 0;
     }
+    case kTargetUrlSaveResultMessage: {
+      std::unique_ptr<TargetSaveResult> request(reinterpret_cast<TargetSaveResult*>(lparam));
+      host->ApplyTargetUrlSaveResult(request->ok, request->message);
+      return 0;
+    }
+    case kShowErrorMessage: {
+      std::unique_ptr<ErrorRequest> request(reinterpret_cast<ErrorRequest*>(lparam));
+      const std::wstring title = Utf8ToWideLocal(request->title);
+      const std::wstring text = Utf8ToWideLocal(request->message);
+      MessageBoxW(host->target_url_window_ ? host->target_url_window_ : host->owner_window_,
+                  text.c_str(), title.c_str(), MB_OK | MB_ICONERROR);
+      return 0;
+    }
     case kRegisterShortcutMessage: {
       auto* request = reinterpret_cast<ShortcutRequest*>(lparam);
       request->result = host->ApplyShortcut(request->shortcut);
@@ -1850,6 +2269,7 @@ LRESULT CALLBACK Win32Host::OwnerWindowProc(HWND window,
       host->RemoveTrayIcon();
       host->ClearShortcut();
       host->CloseShortcutCapture();
+      host->CloseTargetUrlEditor();
       if (host->indicator_window_) {
         DestroyWindow(host->indicator_window_);
         host->indicator_window_ = nullptr;
@@ -2010,6 +2430,113 @@ LRESULT CALLBACK Win32Host::ShortcutWindowProc(HWND window,
       return 0;
   }
 
+  return DefWindowProcW(window, message, wparam, lparam);
+}
+
+LRESULT CALLBACK Win32Host::TargetUrlWindowProc(HWND window,
+                                               UINT message,
+                                               WPARAM wparam,
+                                               LPARAM lparam) {
+  if (message == WM_NCCREATE) AttachHost(window, lparam);
+  Win32Host* host = GetHost(window);
+  if (!host) return DefWindowProcW(window, message, wparam, lparam);
+
+  switch (message) {
+    case WM_KEYDOWN:
+    case WM_SYSKEYDOWN: {
+      if ((wparam == VK_F4 && IsVirtualKeyDown(VK_MENU)) ||
+          (wparam == VK_ESCAPE && !HasShortcutModifierDown())) {
+        host->CloseTargetUrlEditor();
+        return 0;
+      }
+      if (wparam == VK_RETURN) {
+        HWND focus = GetFocus();
+        if (focus == host->target_url_copy_button_ || focus == host->target_url_cancel_button_ ||
+            focus == host->target_url_save_button_) {
+          SendMessageW(focus, BM_CLICK, 0, 0);
+        } else if (host->target_override_source_.empty()) {
+          host->SaveTargetUrl();
+        } else {
+          host->CopyTargetUrl();
+        }
+        return 0;
+      }
+      if (wparam == VK_TAB) {
+        HWND controls[] = {host->target_url_edit_, host->target_url_copy_button_,
+                           host->target_url_cancel_button_, host->target_url_save_button_};
+        HWND focus = GetFocus();
+        int current = 0;
+        for (int index = 0; index < static_cast<int>(ARRAYSIZE(controls)); ++index) {
+          if (controls[index] == focus) current = index;
+        }
+        const int direction = IsVirtualKeyDown(VK_SHIFT) ? -1 : 1;
+        for (int offset = 1; offset <= static_cast<int>(ARRAYSIZE(controls)); ++offset) {
+          const int index = (current + direction * offset +
+                             static_cast<int>(ARRAYSIZE(controls)) * 2) %
+                            static_cast<int>(ARRAYSIZE(controls));
+          HWND next = controls[index];
+          if (next && IsWindowVisible(next) && IsWindowEnabled(next)) {
+            SetFocus(next);
+            break;
+          }
+        }
+        return 0;
+      }
+      break;
+    }
+    case WM_COMMAND:
+      if (LOWORD(wparam) == kTargetUrlEdit && HIWORD(wparam) == EN_CHANGE) {
+        host->UpdateTargetUrlValidation();
+        return 0;
+      }
+      if (LOWORD(wparam) == kTargetUrlSaveButton) {
+        host->SaveTargetUrl();
+        return 0;
+      }
+      if (LOWORD(wparam) == kTargetUrlCopyButton) {
+        host->CopyTargetUrl();
+        return 0;
+      }
+      if (LOWORD(wparam) == kTargetUrlCancelButton) {
+        host->CloseTargetUrlEditor();
+        return 0;
+      }
+      break;
+    case WM_DPICHANGED: {
+      const auto* suggested = reinterpret_cast<RECT*>(lparam);
+      SetWindowPos(window, nullptr, suggested->left, suggested->top,
+                   suggested->right - suggested->left, suggested->bottom - suggested->top,
+                   SWP_NOACTIVATE | SWP_NOZORDER);
+      host->RecreateTargetUrlFont();
+      host->ApplyTargetUrlFont();
+      host->LayoutTargetUrlEditor();
+      return 0;
+    }
+    case WM_SETTINGCHANGE:
+      host->RecreateTargetUrlFont();
+      host->ApplyTargetUrlFont();
+      host->LayoutTargetUrlEditor();
+      RedrawWindow(window, nullptr, nullptr,
+                   RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+      return 0;
+    case WM_CLOSE:
+      host->CloseTargetUrlEditor();
+      return 0;
+    case WM_DESTROY:
+      host->target_url_window_ = nullptr;
+      host->target_url_instructions_ = nullptr;
+      host->target_url_field_label_ = nullptr;
+      host->target_url_edit_ = nullptr;
+      host->target_url_status_label_ = nullptr;
+      host->target_url_copy_button_ = nullptr;
+      host->target_url_save_button_ = nullptr;
+      host->target_url_cancel_button_ = nullptr;
+      if (host->target_url_font_) {
+        DeleteObject(host->target_url_font_);
+        host->target_url_font_ = nullptr;
+      }
+      return 0;
+  }
   return DefWindowProcW(window, message, wparam, lparam);
 }
 

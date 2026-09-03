@@ -146,8 +146,8 @@ napi_value Stop(napi_env env, napi_callback_info) {
 }
 
 napi_value UpdateTray(napi_env env, napi_callback_info info) {
-  size_t count = 7;
-  napi_value arguments[7]{};
+  size_t count = 10;
+  napi_value arguments[10]{};
   napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
 
   bool enabled = true;
@@ -157,13 +157,19 @@ napi_value UpdateTray(napi_env env, napi_callback_info info) {
   int icon_size = 32;
   int dot_size = 16;
   std::string custom_shortcut;
-  if (count != 7 || !GetBoolean(env, arguments[0], &enabled) ||
+  std::string target_mode;
+  std::string custom_target_url;
+  std::string target_override_source;
+  if (count != 10 || !GetBoolean(env, arguments[0], &enabled) ||
       !GetUtf8(env, arguments[1], &trigger_mode) ||
       !GetBoolean(env, arguments[2], &auto_start) ||
       !GetUtf8(env, arguments[3], &indicator_action) ||
       !GetInt32OrNull(env, arguments[4], &icon_size) ||
       !GetInt32OrNull(env, arguments[5], &dot_size) ||
-      !GetUtf8(env, arguments[6], &custom_shortcut)) {
+      !GetUtf8(env, arguments[6], &custom_shortcut) ||
+      !GetUtf8(env, arguments[7], &target_mode) ||
+      !GetUtf8(env, arguments[8], &custom_target_url) ||
+      !GetUtf8(env, arguments[9], &target_override_source)) {
     ThrowLastError(env, "updateTray received invalid arguments");
     return nullptr;
   }
@@ -176,7 +182,10 @@ napi_value UpdateTray(napi_env env, napi_callback_info info) {
                                    indicator_action,
                                    icon_size,
                                    dot_size,
-                                   custom_shortcut));
+                                   custom_shortcut,
+                                   target_mode,
+                                   custom_target_url,
+                                   target_override_source));
 }
 
 napi_value ShowIndicator(napi_env env, napi_callback_info info) {
@@ -262,6 +271,46 @@ napi_value OpenExternalUrl(napi_env env, napi_callback_info info) {
   return CreateBoolean(env, Win32Host::OpenExternalUrl(Utf8ToWide(url)));
 }
 
+napi_value OpenPath(napi_env env, napi_callback_info info) {
+  size_t count = 1;
+  napi_value arguments[1]{};
+  napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
+  std::string path;
+  if (count != 1 || !GetUtf8(env, arguments[0], &path)) {
+    ThrowLastError(env, "openPath(path) requires a string");
+    return nullptr;
+  }
+  return CreateBoolean(env, Win32Host::OpenPath(Utf8ToWide(path)));
+}
+
+napi_value CompleteTargetUrlSave(napi_env env, napi_callback_info info) {
+  size_t count = 2;
+  napi_value arguments[2]{};
+  napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
+  bool ok = false;
+  std::string message;
+  if (count != 2 || !GetBoolean(env, arguments[0], &ok) ||
+      !GetUtf8(env, arguments[1], &message)) {
+    ThrowLastError(env, "completeTargetUrlSave(ok, message) received invalid arguments");
+    return nullptr;
+  }
+  return CreateBoolean(env, g_host && g_host->CompleteTargetUrlSave(ok, message));
+}
+
+napi_value ShowError(napi_env env, napi_callback_info info) {
+  size_t count = 2;
+  napi_value arguments[2]{};
+  napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
+  std::string title;
+  std::string message;
+  if (count != 2 || !GetUtf8(env, arguments[0], &title) ||
+      !GetUtf8(env, arguments[1], &message)) {
+    ThrowLastError(env, "showError(title, message) received invalid arguments");
+    return nullptr;
+  }
+  return CreateBoolean(env, g_host && g_host->ShowError(title, message));
+}
+
 napi_value Initialize(napi_env env, napi_value exports) {
   const napi_property_descriptor properties[] = {
       {"start", nullptr, Start, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -272,6 +321,9 @@ napi_value Initialize(napi_env env, napi_value exports) {
       {"registerShortcut", nullptr, RegisterShortcut, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"setAutoStart", nullptr, SetAutoStart, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"openExternalUrl", nullptr, OpenExternalUrl, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"openPath", nullptr, OpenPath, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"completeTargetUrlSave", nullptr, CompleteTargetUrlSave, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"showError", nullptr, ShowError, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
   napi_define_properties(env, exports, sizeof(properties) / sizeof(properties[0]), properties);
   return exports;
