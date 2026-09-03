@@ -141,6 +141,8 @@ release/
 
 主程序使用 Node SEA，并包含应用和 `selection-hook` 的 JavaScript 代码；两个原生 `.node` 文件保留在外部。主程序清单保留 `asInvoker`，并启用 Common Controls v6 系统视觉样式。
 
+v1.1.1 在 v1.1.0 的宿主模式解耦基础上优化运行时路径：缓存 headless 快捷键解析、避免重复隐藏指示器，并减少配置变更时的重复 native 状态同步。
+
 v1.1.0 将宿主模式与操作系统解耦：Windows 保留默认 native 托盘宿主，同时可显式使用跨平台 headless 宿主。
 
 v1.0.1 重点修复原生 UI 线程退出时的生命周期保护，并完善自定义快捷键捕获、移除和标准系统控件界面。

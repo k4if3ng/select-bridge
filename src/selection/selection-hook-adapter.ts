@@ -13,6 +13,16 @@ import type {
 const SelectionHook = (SelectionHookModule.default ??
   SelectionHookModule) as unknown as SelectionHookConstructor;
 
+const METHOD_NAMES: Readonly<Record<number, string>> = {
+  [SelectionHook.SelectionMethod.NONE]: 'None',
+  [SelectionHook.SelectionMethod.UIA]: 'UI Automation',
+  [SelectionHook.SelectionMethod.ACCESSIBLE]: 'IAccessible',
+  [SelectionHook.SelectionMethod.AXAPI]: 'Accessibility API',
+  [SelectionHook.SelectionMethod.ATSPI]: 'AT-SPI',
+  [SelectionHook.SelectionMethod.PRIMARY]: 'Primary selection',
+  [SelectionHook.SelectionMethod.CLIPBOARD]: 'Clipboard',
+};
+
 export interface SelectionHookCallbacks {
   onSelection(event: SelectionEvent): void;
   onKeyDown(event: KeyEvent): void;
@@ -74,15 +84,5 @@ function toKeyEvent(data: KeyboardEventData): KeyEvent {
 }
 
 function describeMethod(method: TextSelectionData['method']): string {
-  const names: Record<number, string> = {
-    [SelectionHook.SelectionMethod.NONE]: 'None',
-    [SelectionHook.SelectionMethod.UIA]: 'UI Automation',
-    [SelectionHook.SelectionMethod.ACCESSIBLE]: 'IAccessible',
-    [SelectionHook.SelectionMethod.AXAPI]: 'Accessibility API',
-    [SelectionHook.SelectionMethod.ATSPI]: 'AT-SPI',
-    [SelectionHook.SelectionMethod.PRIMARY]: 'Primary selection',
-    [SelectionHook.SelectionMethod.CLIPBOARD]: 'Clipboard',
-  };
-
-  return names[method] ?? `Unknown (${method})`;
+  return METHOD_NAMES[method] ?? `Unknown (${method})`;
 }
