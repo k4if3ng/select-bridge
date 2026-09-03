@@ -19,6 +19,8 @@ export type IndicatorAction = 'click' | 'hover';
 export const HOST_MODES = ['native', 'headless'] as const;
 export type HostMode = (typeof HOST_MODES)[number];
 
+export const DEFAULT_TARGET_URL_TEMPLATE = 'goldendict://{text}?target=popup';
+
 export interface AppConfig {
   schemaVersion: number;
   enabled: boolean;
@@ -33,16 +35,18 @@ export interface AppConfig {
   dotSize: number;
   customShortcut: string;
   autoStart: boolean;
+  targetUrlTemplate: string;
 }
 
 export interface RuntimeOptions {
   triggerMode?: TriggerMode;
   customShortcut?: string;
   hostMode?: HostMode;
+  targetUrlTemplate?: string;
 }
 
 export const DEFAULT_CONFIG: Readonly<AppConfig> = {
-  schemaVersion: 7,
+  schemaVersion: 8,
   enabled: true,
   triggerMode: 'immediate',
   indicatorAction: 'click',
@@ -55,6 +59,7 @@ export const DEFAULT_CONFIG: Readonly<AppConfig> = {
   dotSize: 16,
   customShortcut: 'Ctrl+Alt+G',
   autoStart: false,
+  targetUrlTemplate: DEFAULT_TARGET_URL_TEMPLATE,
 };
 
 export class ConfigStore {
@@ -96,11 +101,16 @@ export function loadRuntimeOptions(argv: string[]): RuntimeOptions {
   const hostValue = argv
     .find((argument) => argument.startsWith('--host='))
     ?.slice('--host='.length);
+  const targetUrlTemplate = argv
+    .find((argument) => argument.startsWith('--target-url='))
+    ?.slice('--target-url='.length)
+    .trim();
 
   return {
     triggerMode: isTriggerMode(triggerValue) ? triggerValue : undefined,
     customShortcut: customShortcut || undefined,
     hostMode: resolveRuntimeHostMode(argv, hostValue),
+    targetUrlTemplate: targetUrlTemplate || undefined,
   };
 }
 
@@ -194,6 +204,7 @@ function sanitizeConfig(value: unknown): AppConfig {
       : getBoundedInteger(value.dotSize, DEFAULT_CONFIG.dotSize, 12, 28),
     customShortcut,
     autoStart: getBoolean(value.autoStart, DEFAULT_CONFIG.autoStart),
+    targetUrlTemplate: getTargetUrlTemplate(value.targetUrlTemplate),
   };
 }
 
@@ -203,6 +214,7 @@ function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
   const requestedTriggerMode = isTriggerMode(process.env.SELECT_BRIDGE_TRIGGER_MODE)
     ? process.env.SELECT_BRIDGE_TRIGGER_MODE
     : config.triggerMode;
+  const targetUrlTemplate = process.env.SELECT_BRIDGE_TARGET_URL?.trim();
   return {
     ...config,
     maxTextLength: getEnvironmentInteger(
@@ -242,7 +254,27 @@ function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
       requestedTriggerMode === 'custom' && !customShortcut
         ? 'immediate'
         : requestedTriggerMode,
+    targetUrlTemplate:
+      targetUrlTemplate && isTargetUrlTemplate(targetUrlTemplate)
+        ? targetUrlTemplate
+        : config.targetUrlTemplate,
   };
+}
+
+export function isTargetUrlTemplate(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.trim() !== value) {
+    return false;
+  }
+
+  if ((value.match(/\{text\}/g) ?? []).length !== 1) {
+    return false;
+  }
+
+  if (/\s|[\u0000-\u001f\u007f]/.test(value)) {
+    return false;
+  }
+
+  return /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value);
 }
 
 function resolveConfigPath(): string {
@@ -282,6 +314,10 @@ function getBoundedEnvironmentInteger(
 
 function getPositiveInteger(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
+function getTargetUrlTemplate(value: unknown): string {
+  return isTargetUrlTemplate(value) ? value : DEFAULT_CONFIG.targetUrlTemplate;
 }
 
 function getMigratedTiming(value: unknown, previousDefault: number, currentDefault: number): number {

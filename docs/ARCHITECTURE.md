@@ -31,7 +31,7 @@ system URL handler ── translation application
 | `src/core/trigger-controller.ts` | 稳定等待、过滤、去重和触发决策 |
 | `src/core/portable-shortcut.ts` | headless 模式的组合键解析和修饰键状态匹配 |
 | `src/platform/` | 跨平台 headless 宿主与 Windows native 宿主 |
-| `src/targets/` | 翻译目标实现 |
+| `src/targets/` | 翻译目标实现和 URL 模板 |
 
 边界规则：
 
@@ -96,10 +96,10 @@ Idle
 
 ## 翻译目标
 
-Goldendict-ng 目标生成：
+URL 目标根据配置模板生成查询地址。模板中的 `{text}` 会被替换为经过 `encodeURIComponent` 编码的选中文字：
 
 ```text
-goldendict://${encodeURIComponent(text)}?target=popup
+goldendict://{text}?target=popup
 ```
 
-系统 URL 打开器使用参数数组调用，不经过 shell 字符串拼接。新增翻译软件时实现新的 `TranslationTarget`，不要把目标判断写进触发控制器。
+默认模板保持 Goldendict-ng popup 的兼容行为。系统 URL 打开器使用参数数组调用，不经过 shell 字符串拼接。新增翻译软件时可以配置新的 URL 模板或实现新的 `TranslationTarget`，不要把目标判断写进触发控制器。

@@ -1,4 +1,9 @@
-import { ConfigStore, loadRuntimeOptions, type AppConfig } from './config.js';
+import {
+  ConfigStore,
+  isTargetUrlTemplate,
+  loadRuntimeOptions,
+  type AppConfig,
+} from './config.js';
 import { TriggerController } from './core/trigger-controller.js';
 import { isPortableShortcut } from './core/portable-shortcut.js';
 import { getDistributionMode } from './distribution.js';
@@ -6,7 +11,7 @@ import { acquireSingleInstance } from './platform/single-instance.js';
 import type { PlatformEvent, PlatformHost } from './platform/types.js';
 import { createPlatformHost } from './platform/create-platform-host.js';
 import { SelectionHookAdapter } from './selection/selection-hook-adapter.js';
-import { GoldenDictTarget } from './targets/goldendict-target.js';
+import { UrlTarget } from './targets/url-target.js';
 
 export async function runApplication(argv = process.argv.slice(2)): Promise<void> {
   const runtime = loadRuntimeOptions(argv);
@@ -22,11 +27,16 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
 
   const configStore = new ConfigStore();
   let config = await configStore.load();
-  config = applyRuntimeOverrides(config, runtime.triggerMode, runtime.customShortcut);
+  config = applyRuntimeOverrides(
+    config,
+    runtime.triggerMode,
+    runtime.customShortcut,
+    runtime.targetUrlTemplate,
+  );
 
   const platform = await createPlatformHost(runtime.hostMode);
   config = adaptConfigForPlatform(config, platform);
-  const target = new GoldenDictTarget((url) => platform.openExternalUrl(url));
+  const target = new UrlTarget(config.targetUrlTemplate, (url) => platform.openExternalUrl(url));
 
   let hook: SelectionHookAdapter | undefined;
   let shuttingDown = false;
@@ -111,7 +121,7 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
   if (config.triggerMode === 'custom' && platform.capabilities.portableShortcut) {
     console.log(`便携快捷键：${config.customShortcut}（事件匹配，不检测系统占用）`);
   }
-  console.log('查询协议：goldendict://<选词>?target=popup');
+  console.log(`查询协议模板：${config.targetUrlTemplate}`);
   console.log('按 Ctrl+C 退出。');
 
   process.once('SIGINT', () => {
@@ -181,11 +191,17 @@ function applyRuntimeOverrides(
   config: AppConfig,
   triggerMode: AppConfig['triggerMode'] | undefined,
   customShortcut: string | undefined,
+  targetUrlTemplate: string | undefined,
 ): AppConfig {
+  if (targetUrlTemplate !== undefined && !isTargetUrlTemplate(targetUrlTemplate)) {
+    throw new Error('无效的目标 URL 模板：必须包含一个 {text}，并以合法 URI scheme 开头。');
+  }
+
   const updated: AppConfig = {
     ...config,
     ...(triggerMode ? { triggerMode } : {}),
     ...(customShortcut ? { customShortcut } : {}),
+    ...(targetUrlTemplate ? { targetUrlTemplate } : {}),
   };
   return updated.triggerMode === 'custom' && !updated.customShortcut
     ? { ...updated, triggerMode: 'immediate' }

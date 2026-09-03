@@ -28,7 +28,7 @@ pnpm start -- --host=native
 
 `pnpm start` 会安装真实全局选区钩子，并可能唤起 Goldendict-ng。Windows 默认同时创建托盘和原生快捷键；仅在需要交互验证时运行。
 
-headless 宿主在 Windows、macOS 和 Linux 上行为一致：不创建托盘或指示器，`immediate`、修饰键和 `custom` 触发由 `selection-hook` 提供，查询继续通过 `goldendict://` 发送。无界面模式的自定义快捷键只做事件匹配，不提供系统占用检测。
+headless 宿主在 Windows、macOS 和 Linux 上行为一致：不创建托盘或指示器，`immediate`、修饰键和 `custom` 触发由 `selection-hook` 提供，查询继续通过配置的 URL 模板发送，默认模板为 `goldendict://{text}?target=popup`。无界面模式的自定义快捷键只做事件匹配，不提供系统占用检测。
 
 宿主模式不写入持久化配置。CLI `--host=native|headless` 的优先级高于别名 `--native`/`--headless`，CLI 又高于 `SELECT_BRIDGE_HOST_MODE`。非 Windows 平台显式请求 native 会立即报错；Windows native 加载失败也不会自动回退。
 
@@ -46,6 +46,8 @@ headless 宿主在 Windows、macOS 和 Linux 上行为一致：不创建托盘�
 - README 配置表
 
 配置清洗必须兼容缺失字段、错误类型和越界数值。
+
+目标 URL 模板使用 `{text}` 作为选词占位符；程序会先执行 `encodeURIComponent`，再通过平台 URL 打开器传递，不经过 shell 字符串拼接。
 
 ## 触发方式
 

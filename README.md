@@ -2,10 +2,10 @@
 
 > 在任意受支持的桌面应用中选中文字，并在 [Goldendict-ng](https://github.com/xiaoyifang/goldendict-ng) 弹窗中查询。
 
-SelectBridge 通过 [`selection-hook`](https://github.com/0xfullex/selection-hook) 监听全局文本选区，判断何时触发查询，并把选中的文字交给 Goldendict-ng；**它本身不提供词典或翻译服务**。运行宿主与操作系统分开选择：所有平台都支持不创建窗口的 headless 宿主，Windows 另外提供完整系统托盘宿主。
+SelectBridge 通过 [`selection-hook`](https://github.com/0xfullex/selection-hook) 监听全局文本选区，判断何时触发查询，并把选中的文字交给配置的 URL 目标；默认目标为 Goldendict-ng。**它本身不提供词典或翻译服务**。运行宿主与操作系统分开选择：所有平台都支持不创建窗口的 headless 宿主，Windows 另外提供完整系统托盘宿主。
 
 ```text
-选中文字 → SelectBridge → goldendict://<URL 编码的选词>?target=popup → Goldendict-ng 弹窗
+选中文字 → SelectBridge → 配置的 URL 模板 → 翻译应用
 ```
 
 选区监听、触发状态机和 `goldendict://` 查询链路跨平台复用。Windows native 模式额外使用轻量 Win32 Node-API 模块提供托盘、悬浮指示器、原生全局快捷键和开机启动；Windows 的两种宿主模式都使用单实例保护。项目不依赖 Electron、WebView 或 Tauri。
@@ -48,7 +48,7 @@ pnpm install
 pnpm start -- --host=headless --trigger=immediate
 ```
 
-headless 模式不创建托盘、设置窗口或悬浮指示器；查询由系统 URL 处理器转交 Goldendict-ng。`icon`/`dot` 配置会在本次运行中切换为 `immediate`，不会覆盖配置文件。这里的 headless 仅表示 SelectBridge 自身不创建 UI，仍需要当前用户的图形桌面、全局选区权限和已注册的 `goldendict://` 处理器。
+headless 模式不创建托盘、设置窗口或悬浮指示器；查询由系统 URL 处理器转交配置的目标应用。默认目标仍是 Goldendict-ng，使用 `goldendict://` 协议。`icon`/`dot` 配置会在本次运行中切换为 `immediate`，不会覆盖配置文件。这里的 headless 仅表示 SelectBridge 自身不创建 UI，仍需要当前用户的图形桌面、全局选区权限和已注册的目标 URL 处理器。
 
 宿主模式与操作系统能力的关系如下：
 
@@ -121,7 +121,10 @@ pnpm start -- --trigger=ctrl
 pnpm start -- --trigger=custom --shortcut=Ctrl+Alt+G
 pnpm start -- --host=headless
 pnpm start -- --host=native
+pnpm start -- --target-url="youdao://query?word={text}"
 ```
+
+目标 URL 模板中的 `{text}` 会替换为经过 `encodeURIComponent` 编码的选中文字。默认模板为 `goldendict://{text}?target=popup`；`--target-url` 和 `SELECT_BRIDGE_TARGET_URL` 只覆盖本次运行，不修改配置文件。
 
 高级数值配置也支持环境变量覆盖：
 
@@ -138,6 +141,7 @@ pnpm start -- --host=native
 | `SELECT_BRIDGE_TRIGGER_MODE` | 本次运行的触发模式 |
 | `SELECT_BRIDGE_HOST_MODE` | 本次运行的宿主模式：`native` 或 `headless` |
 | `SELECT_BRIDGE_NATIVE_PATH` | Windows 自定义原生 UI `.node` 模块路径 |
+| `SELECT_BRIDGE_TARGET_URL` | 本次运行的目标 URL 模板，使用 `{text}` 作为选词占位符 |
 
 ## 常见问题
 
@@ -254,7 +258,7 @@ selection-hook → 选区适配层 → 触发控制器 → PlatformHost → Gold
 ## 当前边界
 
 - 所有平台支持 headless；Windows 额外支持 native 托盘宿主，并默认使用 native；
-- 当前内置翻译目标为 Goldendict-ng；
+- 默认翻译目标为 Goldendict-ng popup，同时支持通过 URL 模板配置其他目标协议；
 - headless 当前不提供托盘、悬浮指示器、开机启动管理或快捷键占用检测；
 - 非 Windows 平台当前不提供应用级单实例保护；
 - 暂未包含代码签名、自动更新和完整的图形化设置页；
