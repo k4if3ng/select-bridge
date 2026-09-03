@@ -74,3 +74,7 @@ headless 宿主在 Windows、macOS 和 Linux 上行为一致：不创建托盘�
 - `docs/ARCHITECTURE.md`：通用模块、状态和边界。
 - `docs/HEADLESS.md`：跨平台无界面宿主、权限和排障。
 - 平台文档：平台 API、工具链、构建、发布和排障。
+
+## Pull Request 检查
+
+Pull Request 和推送到 `main` 的提交会触发 `.github/workflows/ci.yml`：Ubuntu 任务运行 TypeScript 构建与单元测试，Windows x64 和 ARM64 任务分别编译并加载检查原生模块。完整 Setup、Portable 和 GitHub Release 仍只由 SemVer 标签触发的发布工作流生成。
