@@ -23,6 +23,21 @@ SelectBridge does not provide dictionaries or translation services. Windows uses
 
 ## Install
 
+### Scoop
+
+Add the `hoarfrost` bucket and install SelectBridge:
+
+```powershell
+scoop bucket add hoarfrost https://github.com/k4if3ng/hoarfrost
+scoop install hoarfrost/select-bridge
+```
+
+The Scoop manifest supports Windows x64 and ARM64 packages. Future stable releases can be installed with:
+
+```powershell
+scoop update select-bridge
+```
+
 ### Windows packages
 
 Download the package for your architecture from [GitHub Releases](../../releases/latest):
