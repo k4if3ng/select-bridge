@@ -30,7 +30,7 @@ SelectBridge 通过 [`selection-hook`](https://github.com/0xfullex/selection-hoo
 
 ### 2. Windows 发布包
 
-从 [GitHub Releases](../../releases/latest) 下载适合你的 Windows 包。构建脚本支持 x64 和 ARM64；当前 GitHub Actions 默认发布 x64，ARM64 原生包需在 ARM64 Windows + ARM64 Node.js 环境构建：
+从 [GitHub Releases](../../releases/latest) 下载适合你的 Windows 包。构建脚本和 GitHub Actions 均支持 x64 和 ARM64；ARM64 构建使用 Windows ARM runner 与 ARM64 Node.js：
 
 | 包 | 适合人群 | 说明 |
 | --- | --- | --- |
@@ -235,8 +235,8 @@ release/
 ## 浏览器扩展探针
 
 仓库还提供一个很小的 Manifest V3 扩展，用来验证浏览器通过右键菜单打开
-`goldendict://` 时的外部协议确认范围。它不注入网页脚本，也不读取网站内容，只把用户
-主动选中的文字交给扩展 service worker；安装和记录步骤见
+`goldendict://` 时的外部协议确认范围。它只读取用户当前选区，不上传网页内容；选区附近的“译”按钮由 content script 显示，
+点击后交给扩展 service worker；安装和记录步骤见
 [`browser-extension/README.md`](browser-extension/README.md)。该目录用于判断浏览器插件
 方案的可行性，不属于当前桌面程序的发布包。
 

@@ -141,7 +141,7 @@ release/
 └ SelectBridge-<version>-windows-<arch>-setup.exe
 ```
 
-其中 `<arch>` 为 `x64` 或 `arm64`。ARM64 构建必须使用 ARM64 Node.js、ARM64 native addon 和 `selection-hook` 的 `win32-arm64` 预编译模块；x86/ia32 不在当前支持范围内。
+其中 `<arch>` 为 `x64` 或 `arm64`。GitHub Actions 使用 x64 和 ARM64 runner 分别构建两个架构；ARM64 构建必须使用 ARM64 Node.js、ARM64 native addon 和 `selection-hook` 的 `win32-arm64` 预编译模块；x86/ia32 不在当前支持范围内。
 
 主程序使用 Node SEA，并包含应用和 `selection-hook` 的 JavaScript 代码；两个原生 `.node` 文件保留在外部。主程序清单保留 `asInvoker`，并启用 Common Controls v6 系统视觉样式。
 
