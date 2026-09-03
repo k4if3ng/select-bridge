@@ -42,8 +42,16 @@ export class HeadlessHost implements PlatformHost {
 
   completeTargetUrlSave(_ok: boolean, _message?: string): void {}
 
+  showInfo(title: string, message: string): void {
+    console.log(`[${title}] ${message}`);
+  }
+
   showError(title: string, message: string): void {
     console.error(`[${title}] ${message}`);
+  }
+
+  confirm(_title: string, _message: string): boolean {
+    return false;
   }
 
   registerShortcut(shortcut: string): ShortcutRegistrationResult {

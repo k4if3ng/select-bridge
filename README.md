@@ -82,6 +82,7 @@ Indicator settings >
 Settings >
   Start at sign-in
   Language > English / 简体中文
+  Check for updates…
   Open config file
   Open config folder
   Reload configuration
@@ -93,6 +94,8 @@ Language changes take effect immediately in the tray menu and any open settings 
 
 - English (`en-US`)
 - 简体中文 (`zh-CN`)
+
+Select **Settings → Check for updates…** to compare the installed version with the latest stable GitHub Release. If a newer version is available, SelectBridge can open the official download page; it never downloads or installs updates automatically.
 
 ## URL templates
 

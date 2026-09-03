@@ -34,6 +34,8 @@ constexpr UINT kStopMessage = WM_APP + 5;
 constexpr UINT kRegisterShortcutMessage = WM_APP + 6;
 constexpr UINT kTargetUrlSaveResultMessage = WM_APP + 7;
 constexpr UINT kShowErrorMessage = WM_APP + 8;
+constexpr UINT kShowInfoMessage = WM_APP + 9;
+constexpr UINT kConfirmMessage = WM_APP + 10;
 constexpr UINT kEditSetCueBannerMessage = 0x1501;
 constexpr UINT_PTR kHoverTimerId = 1;
 constexpr int kHotkeyId = 0x5346;
@@ -68,6 +70,7 @@ constexpr UINT kCommandSetTargetUrl = 1522;
 constexpr UINT kCommandOpenConfigFile = 1530;
 constexpr UINT kCommandOpenConfigDirectory = 1531;
 constexpr UINT kCommandReloadConfig = 1532;
+constexpr UINT kCommandCheckForUpdates = 1533;
 constexpr UINT kCommandLanguageEnglish = 1540;
 constexpr UINT kCommandLanguageSimplifiedChinese = 1541;
 constexpr UINT kShortcutInstructions = 1600;
@@ -590,6 +593,12 @@ struct Win32Host::ErrorRequest {
   std::string message;
 };
 
+struct Win32Host::DialogRequest {
+  std::string title;
+  std::string message;
+  bool confirmed = false;
+};
+
 Win32Host::Win32Host(napi_env env, napi_value callback) : env_(env) {
   napi_value resource_name = nullptr;
   if (napi_create_string_utf8(env_, "select-bridge-win32", NAPI_AUTO_LENGTH, &resource_name) !=
@@ -786,6 +795,24 @@ bool Win32Host::ShowError(const std::string& title, const std::string& message) 
   }
   request.release();
   return true;
+}
+
+bool Win32Host::ShowInfo(const std::string& title, const std::string& message) {
+  if (!owner_window_ || stopping_) return false;
+  DialogRequest request;
+  request.title = title;
+  request.message = message;
+  SendMessageW(owner_window_, kShowInfoMessage, 0, reinterpret_cast<LPARAM>(&request));
+  return true;
+}
+
+bool Win32Host::Confirm(const std::string& title, const std::string& message) {
+  if (!owner_window_ || stopping_) return false;
+  DialogRequest request;
+  request.title = title;
+  request.message = message;
+  SendMessageW(owner_window_, kConfirmMessage, 0, reinterpret_cast<LPARAM>(&request));
+  return request.confirmed;
 }
 
 bool Win32Host::SetAutoStart(bool enabled,
@@ -1255,6 +1282,9 @@ void Win32Host::ShowTrayMenu() {
               reinterpret_cast<UINT_PTR>(language_menu),
               LocalizedString(IDS_MENU_LANGUAGE).c_str());
   AppendMenuW(settings_menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(settings_menu, MF_STRING, kCommandCheckForUpdates,
+              LocalizedString(IDS_MENU_CHECK_FOR_UPDATES).c_str());
+  AppendMenuW(settings_menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(settings_menu, MF_STRING, kCommandOpenConfigFile,
               LocalizedString(IDS_MENU_OPEN_CONFIG_FILE).c_str());
   AppendMenuW(settings_menu, MF_STRING, kCommandOpenConfigDirectory,
@@ -1374,6 +1404,9 @@ void Win32Host::HandleTrayCommand(unsigned int command) {
       break;
     case kCommandReloadConfig:
       SendEvent("reload-config");
+      break;
+    case kCommandCheckForUpdates:
+      SendEvent("check-for-updates");
       break;
     case kCommandExit:
       SendEvent("exit");
@@ -2514,6 +2547,23 @@ LRESULT CALLBACK Win32Host::OwnerWindowProc(HWND window,
       const std::wstring text = Utf8ToWideLocal(request->message);
       MessageBoxW(host->target_url_window_ ? host->target_url_window_ : host->owner_window_,
                   text.c_str(), title.c_str(), MB_OK | MB_ICONERROR);
+      return 0;
+    }
+    case kShowInfoMessage: {
+      auto* request = reinterpret_cast<DialogRequest*>(lparam);
+      const std::wstring title = Utf8ToWideLocal(request->title);
+      const std::wstring text = Utf8ToWideLocal(request->message);
+      MessageBoxW(host->target_url_window_ ? host->target_url_window_ : host->owner_window_,
+                  text.c_str(), title.c_str(), MB_OK | MB_ICONINFORMATION);
+      return 0;
+    }
+    case kConfirmMessage: {
+      auto* request = reinterpret_cast<DialogRequest*>(lparam);
+      const std::wstring title = Utf8ToWideLocal(request->title);
+      const std::wstring text = Utf8ToWideLocal(request->message);
+      request->confirmed =
+          MessageBoxW(host->target_url_window_ ? host->target_url_window_ : host->owner_window_,
+                      text.c_str(), title.c_str(), MB_YESNO | MB_ICONINFORMATION) == IDYES;
       return 0;
     }
     case kRegisterShortcutMessage: {

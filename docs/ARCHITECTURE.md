@@ -28,6 +28,8 @@ system URL handler ── translation application
 | `src/app.ts` | 组合配置、平台、选区监听和翻译目标 |
 | `src/config.ts` | 默认配置、清洗、环境变量、CLI 和持久化 |
 | `src/i18n.ts` | 支持的界面语言、系统语言归一化和 TypeScript 用户提示 |
+| `src/updates/update-checker.ts` | 查询 GitHub 最新稳定版并执行严格 SemVer 比较 |
+| `src/version.ts` | 读取开发态版本，Windows SEA 构建时接收注入版本 |
 | `src/selection/` | 将 `selection-hook` 事件转换为内部类型 |
 | `src/core/trigger-controller.ts` | 稳定等待、过滤、去重和触发决策 |
 | `src/core/portable-shortcut.ts` | headless 模式的组合键解析和修饰键状态匹配 |
@@ -86,6 +88,8 @@ Idle
 ## 平台抽象
 
 `PlatformHost` 提供生命周期、状态同步、指示器、系统协议/路径打开、原生设置结果回传、快捷键和开机启动能力，并通过 capabilities 声明实际支持项。操作系统和宿主模式是两个独立维度：`process.platform` 表示操作系统，`capabilities.hostMode` 表示当前宿主。运行参数先选择 `native` 或 `headless`，平台层再验证当前操作系统是否实现了该宿主。
+
+Windows 托盘的手动更新检查通过平台事件进入 `src/app.ts`，网络请求和版本比较留在 TypeScript 层。更新检查只读取 GitHub 最新稳定 Release；原生层仅显示结果、确认是否打开页面，并复用系统 URL 打开器。Windows SEA 构建从 `package.json` 注入当前版本，避免打包程序依赖外部项目文件。
 
 - `HeadlessHost` 可在 Windows、macOS 和 Linux 使用，不创建托盘或悬浮窗口；URL 交给通用系统打开器，自定义组合键由 `selection-hook` 的 `key-down`/`key-up` 事件匹配。
 - `WindowsNativeHost` 只在 Windows 提供，保留托盘、指示器、`RegisterHotKey` 冲突检测和开机启动。

@@ -116,6 +116,7 @@ Win32 UI 线程不能直接调用 JS。窗口必须在创建它的线程销毁�
 - URL 模板允许任意合法 URI scheme，必须且只能包含一个 `{text}`，不得包含空白/控制字符，最大 2048 个 UTF-16 code units；
 - `--target-url` 优先于 `SELECT_BRIDGE_TARGET_URL`，运行时覆盖优先于配置和默认值。存在覆盖时目标选项禁用，编辑窗口只读并提供复制入口；
 - “设置”子菜单在登录时自动启动之后提供“语言”子菜单，并在配置维护入口之前保留分隔线；语言项固定使用自称 `English` 和 `简体中文`；
+- “检查更新…”位于“设置”子菜单，通过 TypeScript 异步查询 GitHub 最新稳定 Release；发现新版本时询问是否打开官方下载页，不自动下载或安装；
 - `en-US` 是默认和资源缺失时的回退语言。首次运行或升级缺少 `uiLanguage` 的旧配置时，系统首选 UI 语言属于简体中文语言族则选择 `zh-CN`，否则选择 `en-US`，解析结果只持久化一次；
 - 语言选择先原子保存，成功后通过 `kUpdateTrayMessage` 在 Win32 UI 线程切换。托盘菜单下次打开时使用新语言；当前设置窗口原地刷新标题、标签、按钮和状态，不丢弃 URL 输入、快捷键捕获或焦点；
 - native 文案分别位于 `native/win32/strings/en-US.rc` 与 `native/win32/strings/zh-CN.rc`，使用相同资源 ID 和带 `LANGUAGE` 的 `STRINGTABLE`；加载时按明确语言查找并回退到英文，不使用 `.resw`/PRI；
@@ -166,7 +167,7 @@ release/
 
 v1.1.1 在 v1.1.0 的宿主模式解耦基础上优化运行时路径：缓存 headless 快捷键解析、避免重复隐藏指示器，并减少配置变更时的重复 native 状态同步。
 
-v1.2.0 修复 Windows native UI 编码，新增 English/简体中文即时切换、托盘查询目标与自定义 URL 编辑入口、schema 10 配置迁移和严格重载，并为 x64/ARM64 Release 及 Pull Request CI 提供独立构建任务。
+v1.2.0 修复 Windows native UI 编码，新增 English/简体中文即时切换、托盘查询目标、自定义 URL 编辑入口与手动更新检查，加入 schema 10 配置迁移和严格重载，并为 x64/ARM64 Release 及 Pull Request CI 提供独立构建任务。
 
 v1.1.0 将宿主模式与操作系统解耦：Windows 保留默认 native 托盘宿主，同时可显式使用跨平台 headless 宿主。
 

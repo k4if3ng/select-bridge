@@ -64,6 +64,7 @@ export type PlatformEvent =
   | { type: 'open-config-file' }
   | { type: 'open-config-directory' }
   | { type: 'reload-config' }
+  | { type: 'check-for-updates' }
   | { type: 'exit' };
 
 export interface PlatformHost {
@@ -77,7 +78,9 @@ export interface PlatformHost {
   openExternalUrl(url: string): boolean;
   openPath(path: string): boolean;
   completeTargetUrlSave(ok: boolean, message?: string): void;
+  showInfo(title: string, message: string): void;
   showError(title: string, message: string): void;
+  confirm(title: string, message: string): boolean;
   registerShortcut(shortcut: string): ShortcutRegistrationResult;
   setAutoStart(enabled: boolean): Promise<boolean>;
 }
