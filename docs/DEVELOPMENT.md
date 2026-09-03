@@ -11,6 +11,9 @@
 ```powershell
 pnpm install
 pnpm build
+
+# 运行 TypeScript 单元测试
+pnpm test
 ```
 
 运行：
@@ -28,7 +31,7 @@ pnpm start -- --host=native
 
 `pnpm start` 会安装真实全局选区钩子，并可能唤起 Goldendict-ng。Windows 默认同时创建托盘和原生快捷键；仅在需要交互验证时运行。
 
-headless 宿主在 Windows、macOS 和 Linux 上行为一致：不创建托盘或指示器，`immediate`、修饰键和 `custom` 触发由 `selection-hook` 提供，查询继续通过 `goldendict://` 发送。无界面模式的自定义快捷键只做事件匹配，不提供系统占用检测。
+headless 宿主在 Windows、macOS 和 Linux 上行为一致：不创建托盘或指示器，`immediate`、修饰键和 `custom` 触发由 `selection-hook` 提供，查询继续通过配置的 URL 模板发送，默认模板为 `goldendict://{text}?target=popup`。无界面模式的自定义快捷键只做事件匹配，不提供系统占用检测。
 
 宿主模式不写入持久化配置。CLI `--host=native|headless` 的优先级高于别名 `--native`/`--headless`，CLI 又高于 `SELECT_BRIDGE_HOST_MODE`。非 Windows 平台显式请求 native 会立即报错；Windows native 加载失败也不会自动回退。
 
@@ -46,6 +49,8 @@ headless 宿主在 Windows、macOS 和 Linux 上行为一致：不创建托盘�
 - README 配置表
 
 配置清洗必须兼容缺失字段、错误类型和越界数值。
+
+目标 URL 模板使用 `{text}` 作为选词占位符；程序会先执行 `encodeURIComponent`，再通过平台 URL 打开器传递，不经过 shell 字符串拼接。
 
 ## 触发方式
 
@@ -69,3 +74,7 @@ headless 宿主在 Windows、macOS 和 Linux 上行为一致：不创建托盘�
 - `docs/ARCHITECTURE.md`：通用模块、状态和边界。
 - `docs/HEADLESS.md`：跨平台无界面宿主、权限和排障。
 - 平台文档：平台 API、工具链、构建、发布和排障。
+
+## Pull Request 检查
+
+Pull Request 和推送到 `main` 的提交会触发 `.github/workflows/ci.yml`：Ubuntu 任务运行 TypeScript 构建与单元测试，Windows x64 和 ARM64 任务分别编译并加载检查原生模块。完整 Setup、Portable 和 GitHub Release 仍只由 SemVer 标签触发的发布工作流生成。

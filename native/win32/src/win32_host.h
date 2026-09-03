@@ -28,7 +28,11 @@ class Win32Host {
                   const std::string& indicator_action,
                   int icon_size,
                   int dot_size,
-                  const std::string& custom_shortcut);
+                  const std::string& custom_shortcut,
+                  const std::string& target_mode,
+                  const std::string& custom_target_url,
+                  const std::string& target_override_source,
+                  const std::string& ui_language);
   bool ShowIndicator(int x,
                      int y,
                      const std::string& style,
@@ -37,17 +41,23 @@ class Win32Host {
                      unsigned int hover_delay_ms);
   bool HideIndicator();
   ShortcutResult RegisterShortcut(const std::string& shortcut);
+  bool CompleteTargetUrlSave(bool ok, const std::string& message);
+  bool ShowError(const std::string& title, const std::string& message);
 
   static bool SetAutoStart(bool enabled,
                            const std::wstring& executable_path,
                            const std::wstring& arguments_text);
   static bool OpenExternalUrl(const std::wstring& url);
+  static bool OpenPath(const std::wstring& path);
+  static std::string GetSystemUiLanguage();
 
  private:
   struct IndicatorRequest;
   struct TrayStateRequest;
   struct EventPayload;
   struct ShortcutRequest;
+  struct TargetSaveResult;
+  struct ErrorRequest;
   enum class ShortcutCaptureState {
     current,
     waiting,
@@ -62,6 +72,7 @@ class Win32Host {
   static LRESULT CALLBACK OwnerWindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
   static LRESULT CALLBACK IndicatorWindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
   static LRESULT CALLBACK ShortcutWindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
+  static LRESULT CALLBACK TargetUrlWindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
   static void CallJs(napi_env env, napi_value callback, void* context, void* data);
 
   DWORD ThreadMain();
@@ -83,6 +94,22 @@ class Win32Host {
   void CaptureShortcutKey(UINT virtual_key);
   void SaveCapturedShortcut();
   void RemoveCapturedShortcut();
+  void ShowTargetUrlEditor();
+  void CloseTargetUrlEditor();
+  void LayoutTargetUrlEditor();
+  void RecreateTargetUrlFont();
+  void ApplyTargetUrlFont();
+  void UpdateTargetUrlValidation();
+  void SaveTargetUrl();
+  void CopyTargetUrl();
+  void ApplyTargetUrlSaveResult(bool ok, const std::string& message);
+  std::wstring LocalizedString(unsigned int resource_id) const;
+  std::wstring FormatLocalizedString(unsigned int resource_id,
+                                     const std::wstring& placeholder,
+                                     const std::wstring& value) const;
+  void RefreshLocalizedWindows();
+  void RefreshShortcutWindowText();
+  void RefreshTargetUrlWindowText();
 
   void ApplyIndicator(const IndicatorRequest& request);
   void PaintIndicator(HWND window);
@@ -108,8 +135,19 @@ class Win32Host {
   HWND owner_window_ = nullptr;
   HWND indicator_window_ = nullptr;
   HWND shortcut_window_ = nullptr;
+  HWND target_url_window_ = nullptr;
+  HWND target_url_instructions_ = nullptr;
+  HWND target_url_field_label_ = nullptr;
+  HWND target_url_edit_frame_ = nullptr;
+  HWND target_url_edit_ = nullptr;
+  HWND target_url_status_label_ = nullptr;
+  HWND target_url_copy_button_ = nullptr;
+  HWND target_url_save_button_ = nullptr;
+  HWND target_url_cancel_button_ = nullptr;
+  HFONT target_url_font_ = nullptr;
   HWND shortcut_instructions_ = nullptr;
   HWND shortcut_field_label_ = nullptr;
+  HWND shortcut_value_frame_ = nullptr;
   HWND shortcut_value_edit_ = nullptr;
   HWND shortcut_status_label_ = nullptr;
   HWND shortcut_remove_button_ = nullptr;
@@ -128,6 +166,12 @@ class Win32Host {
   int icon_size_ = 32;
   int dot_size_ = 16;
   std::string custom_shortcut_ = "Ctrl+Alt+G";
+  std::string target_mode_ = "goldendict";
+  std::string custom_target_url_;
+  std::string target_override_source_;
+  std::string ui_language_ = "en-US";
+  bool target_url_save_pending_ = false;
+  std::string pending_target_url_;
   std::string captured_shortcut_;
   std::string shortcut_preview_;
   ShortcutCaptureState shortcut_capture_state_ = ShortcutCaptureState::current;

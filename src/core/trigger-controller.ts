@@ -1,7 +1,7 @@
 import { basename } from 'node:path';
 
 import { isTriggerMode, type AppConfig, type TriggerMode } from '../config.js';
-import type { PlatformEvent, PlatformHost } from '../platform/types.js';
+import type { PlatformEvent, PlatformHost, PlatformState } from '../platform/types.js';
 import type { KeyEvent, ScreenPoint, SelectionEvent } from '../selection/types.js';
 import type { TranslationTarget } from '../targets/types.js';
 import { PortableShortcutMatcher } from './portable-shortcut.js';
@@ -19,6 +19,7 @@ export interface TriggerControllerOptions {
   platform: PlatformHost;
   target: TranslationTarget;
   portableCustomShortcut: boolean;
+  toPlatformState(config: AppConfig): PlatformState;
   onConfigChange(config: AppConfig): void;
   onExitRequested(): void;
 }
@@ -161,31 +162,29 @@ export class TriggerController {
           triggerMode: this.config.triggerMode === 'custom' ? 'immediate' : this.config.triggerMode,
         });
         return;
-      case 'open-settings':
-        return;
       case 'exit':
         this.options.onExitRequested();
         return;
       case 'toggle-auto-start':
+      case 'set-target-mode':
+      case 'save-target-url':
+      case 'set-ui-language':
+      case 'open-config-file':
+      case 'open-config-directory':
+      case 'reload-config':
         return;
     }
   }
 
-  replaceConfig(config: AppConfig): void {
+  replaceConfig(config: AppConfig, notify = true): void {
     this.config = config;
     this.cancelCandidate();
     this.portableShortcutMatcher.setShortcut(config.customShortcut);
     this.portableShortcutMatcher.reset();
-    this.options.platform.updateState({
-      enabled: config.enabled,
-      triggerMode: config.triggerMode,
-      autoStart: config.autoStart,
-      indicatorAction: config.indicatorAction,
-      iconSize: config.iconSize,
-      dotSize: config.dotSize,
-      customShortcut: config.customShortcut,
-    });
-    this.options.onConfigChange(config);
+    this.options.platform.updateState(this.options.toPlatformState(config));
+    if (notify) {
+      this.options.onConfigChange(config);
+    }
   }
 
   dispose(): void {

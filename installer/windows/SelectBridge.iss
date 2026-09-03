@@ -10,6 +10,12 @@
 #ifndef OutputDir
   #define OutputDir "."
 #endif
+#ifndef ArchitectureName
+  #define ArchitectureName "x64"
+#endif
+#ifndef ArchitectureToken
+  #define ArchitectureToken "x64compatible"
+#endif
 
 [Setup]
 AppId={{8A6DCE91-54BC-4E4A-A09D-6ADFD7F41430}
@@ -20,10 +26,10 @@ DefaultDirName={localappdata}\Programs\SelectBridge
 DefaultGroupName=SelectBridge
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed={#ArchitectureToken}
+ArchitecturesInstallIn64BitMode={#ArchitectureToken}
 OutputDir={#OutputDir}
-OutputBaseFilename=SelectBridge-{#AppVersion}-windows-x64-setup
+OutputBaseFilename=SelectBridge-{#AppVersion}-windows-{#ArchitectureName}-setup
 SetupIconFile={#ProjectRoot}\resources\icon.ico
 UninstallDisplayIcon={app}\SelectBridge.exe
 Compression=lzma2/max

@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { getDistributionMode } from './distribution.js';
+import { isUiLanguage, type UiLanguage } from './i18n.js';
 
 export const TRIGGER_MODES = [
   'immediate',
@@ -15,9 +16,14 @@ export const TRIGGER_MODES = [
 ] as const;
 export type TriggerMode = (typeof TRIGGER_MODES)[number];
 export type IndicatorAction = 'click' | 'hover';
+export const TARGET_MODES = ['goldendict', 'custom'] as const;
+export type TargetMode = (typeof TARGET_MODES)[number];
+export type TargetUrlOverrideSource = 'cli' | 'environment';
 
 export const HOST_MODES = ['native', 'headless'] as const;
 export type HostMode = (typeof HOST_MODES)[number];
+
+export const DEFAULT_TARGET_URL_TEMPLATE = 'goldendict://{text}?target=popup';
 
 export interface AppConfig {
   schemaVersion: number;
@@ -33,16 +39,21 @@ export interface AppConfig {
   dotSize: number;
   customShortcut: string;
   autoStart: boolean;
+  targetMode: TargetMode;
+  customTargetUrlTemplate: string;
+  uiLanguage: UiLanguage;
 }
 
 export interface RuntimeOptions {
   triggerMode?: TriggerMode;
   customShortcut?: string;
   hostMode?: HostMode;
+  targetUrlOverride?: string;
+  targetUrlOverrideSource?: TargetUrlOverrideSource;
 }
 
 export const DEFAULT_CONFIG: Readonly<AppConfig> = {
-  schemaVersion: 7,
+  schemaVersion: 10,
   enabled: true,
   triggerMode: 'immediate',
   indicatorAction: 'click',
@@ -55,35 +66,136 @@ export const DEFAULT_CONFIG: Readonly<AppConfig> = {
   dotSize: 16,
   customShortcut: 'Ctrl+Alt+G',
   autoStart: false,
+  targetMode: 'goldendict',
+  customTargetUrlTemplate: '',
+  uiLanguage: 'en-US',
 };
 
 export class ConfigStore {
   readonly path: string;
+  private saveQueue: Promise<void> = Promise.resolve();
 
-  constructor(path = resolveConfigPath()) {
+  constructor(
+    path = resolveConfigPath(),
+    private readonly initialUiLanguage: UiLanguage = DEFAULT_CONFIG.uiLanguage,
+  ) {
     this.path = path;
   }
 
   async load(): Promise<AppConfig> {
-    let stored: unknown;
-
     try {
-      stored = JSON.parse(await readFile(this.path, 'utf8')) as unknown;
-    } catch (error: unknown) {
-      if (isNodeError(error) && error.code === 'ENOENT') {
-        return applyEnvironment(DEFAULT_CONFIG);
+      let stored: unknown;
+      try {
+        stored = JSON.parse(await readFile(this.path, 'utf8')) as unknown;
+      } catch (error: unknown) {
+        if (!isNodeError(error) || error.code !== 'ENOENT') {
+          throw error;
+        }
+        const created = { ...DEFAULT_CONFIG, uiLanguage: this.initialUiLanguage };
+        await this.save(created);
+        return applyEnvironment(created);
       }
 
+      if (isRecord(stored) && !Object.hasOwn(stored, 'uiLanguage')) {
+        const migrated = sanitizeConfig(stored, this.initialUiLanguage);
+        try {
+          return applyEnvironment(
+            await this.mergePersistent({ uiLanguage: this.initialUiLanguage }),
+          );
+        } catch (error: unknown) {
+          console.warn(`[config] 无法持久化界面语言迁移到 ${this.path}。`, error);
+          return applyEnvironment(migrated);
+        }
+      }
+      return applyEnvironment(sanitizeConfig(stored, this.initialUiLanguage));
+    } catch (error: unknown) {
       console.warn(`[config] 无法读取 ${this.path}，使用默认配置。`, error);
-      return applyEnvironment(DEFAULT_CONFIG);
+      return applyEnvironment({ ...DEFAULT_CONFIG, uiLanguage: this.initialUiLanguage });
     }
+  }
 
-    return applyEnvironment(sanitizeConfig(stored));
+  async readPersistent(): Promise<AppConfig> {
+    try {
+      return sanitizeConfig(
+        JSON.parse(await readFile(this.path, 'utf8')) as unknown,
+        this.initialUiLanguage,
+      );
+    } catch (error: unknown) {
+      if (isNodeError(error) && error.code === 'ENOENT') {
+        return { ...DEFAULT_CONFIG, uiLanguage: this.initialUiLanguage };
+      }
+      throw error;
+    }
+  }
+
+  async ensureExists(): Promise<void> {
+    try {
+      await readFile(this.path, 'utf8');
+    } catch (error: unknown) {
+      if (!isNodeError(error) || error.code !== 'ENOENT') {
+        throw error;
+      }
+      await this.save({ ...DEFAULT_CONFIG, uiLanguage: this.initialUiLanguage });
+    }
+  }
+
+  async mergePersistent(patch: Partial<AppConfig>): Promise<AppConfig> {
+    return this.enqueueSave(async () => {
+      let stored: unknown = { ...DEFAULT_CONFIG, uiLanguage: this.initialUiLanguage };
+      try {
+        stored = JSON.parse(await readFile(this.path, 'utf8')) as unknown;
+      } catch (error: unknown) {
+        if (!isNodeError(error) || error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
+      const storedRecord = isRecord(stored) ? stored : {};
+      const updated = sanitizeConfig(
+        { ...storedRecord, ...patch, schemaVersion: DEFAULT_CONFIG.schemaVersion },
+        this.initialUiLanguage,
+      );
+      const persistedRecord: Record<string, unknown> = { ...storedRecord, ...updated };
+      delete persistedRecord.targetUrlTemplate;
+      await this.writeAtomically(persistedRecord as unknown as AppConfig);
+      return updated;
+    });
   }
 
   async save(config: AppConfig): Promise<void> {
+    return this.enqueueSave(() => this.writeAtomically(config));
+  }
+
+  async flush(): Promise<void> {
+    await this.saveQueue;
+  }
+
+  private async writeAtomically(config: AppConfig): Promise<void> {
     await mkdir(dirname(this.path), { recursive: true });
-    await writeFile(this.path, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+    const temporaryPath = `${this.path}.${process.pid}.${Date.now()}.tmp`;
+    const contents = `${JSON.stringify(config, null, 2)}\n`;
+
+    try {
+      await writeFile(temporaryPath, contents, 'utf8');
+      try {
+        await rename(temporaryPath, this.path);
+      } catch (error: unknown) {
+        if (!isNodeError(error) || !['EEXIST', 'EPERM'].includes(error.code ?? '')) {
+          throw error;
+        }
+
+        await rm(this.path, { force: true });
+        await rename(temporaryPath, this.path);
+      }
+    } finally {
+      await rm(temporaryPath, { force: true });
+    }
+  }
+
+  private enqueueSave<T>(operation: () => Promise<T>): Promise<T> {
+    const queued = this.saveQueue.then(operation);
+    this.saveQueue = queued.then(() => undefined, () => undefined);
+    return queued;
   }
 }
 
@@ -96,11 +208,23 @@ export function loadRuntimeOptions(argv: string[]): RuntimeOptions {
   const hostValue = argv
     .find((argument) => argument.startsWith('--host='))
     ?.slice('--host='.length);
+  const cliTargetUrl = argv
+    .find((argument) => argument.startsWith('--target-url='))
+    ?.slice('--target-url='.length)
+    .trim();
+  const environmentTargetUrl = process.env.SELECT_BRIDGE_TARGET_URL?.trim();
+  const targetUrlOverride = cliTargetUrl || environmentTargetUrl || undefined;
 
   return {
     triggerMode: isTriggerMode(triggerValue) ? triggerValue : undefined,
     customShortcut: customShortcut || undefined,
     hostMode: resolveRuntimeHostMode(argv, hostValue),
+    targetUrlOverride,
+    targetUrlOverrideSource: cliTargetUrl
+      ? 'cli'
+      : environmentTargetUrl
+        ? 'environment'
+        : undefined,
   };
 }
 
@@ -110,6 +234,10 @@ export function isTriggerMode(value: unknown): value is TriggerMode {
 
 export function isHostMode(value: unknown): value is HostMode {
   return typeof value === 'string' && (HOST_MODES as readonly string[]).includes(value);
+}
+
+export function isTargetMode(value: unknown): value is TargetMode {
+  return typeof value === 'string' && (TARGET_MODES as readonly string[]).includes(value);
 }
 
 function resolveRuntimeHostMode(
@@ -152,7 +280,10 @@ function resolveRuntimeHostMode(
   return environmentValue;
 }
 
-function sanitizeConfig(value: unknown): AppConfig {
+function sanitizeConfig(
+  value: unknown,
+  missingUiLanguage: UiLanguage = DEFAULT_CONFIG.uiLanguage,
+): AppConfig {
   if (!isRecord(value)) {
     return { ...DEFAULT_CONFIG };
   }
@@ -194,10 +325,16 @@ function sanitizeConfig(value: unknown): AppConfig {
       : getBoundedInteger(value.dotSize, DEFAULT_CONFIG.dotSize, 12, 28),
     customShortcut,
     autoStart: getBoolean(value.autoStart, DEFAULT_CONFIG.autoStart),
+    uiLanguage: Object.hasOwn(value, 'uiLanguage')
+      ? isUiLanguage(value.uiLanguage)
+        ? value.uiLanguage
+        : DEFAULT_CONFIG.uiLanguage
+      : missingUiLanguage,
+    ...migrateTargetConfig(value),
   };
 }
 
-function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
+export function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
   const customShortcut =
     process.env.SELECT_BRIDGE_SHORTCUT?.trim() || config.customShortcut;
   const requestedTriggerMode = isTriggerMode(process.env.SELECT_BRIDGE_TRIGGER_MODE)
@@ -245,6 +382,27 @@ function applyEnvironment(config: Readonly<AppConfig>): AppConfig {
   };
 }
 
+export function isTargetUrlTemplate(value: unknown): value is string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 2048 ||
+    value.trim() !== value
+  ) {
+    return false;
+  }
+
+  if ((value.match(/\{text\}/g) ?? []).length !== 1) {
+    return false;
+  }
+
+  if (/\s|[\u0000-\u001f\u007f]/.test(value)) {
+    return false;
+  }
+
+  return /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value);
+}
+
 function resolveConfigPath(): string {
   if (process.env.SELECT_BRIDGE_CONFIG) {
     return process.env.SELECT_BRIDGE_CONFIG;
@@ -282,6 +440,33 @@ function getBoundedEnvironmentInteger(
 
 function getPositiveInteger(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
+export function resolveConfiguredTargetTemplate(config: Readonly<AppConfig>): string {
+  return config.targetMode === 'custom' && isTargetUrlTemplate(config.customTargetUrlTemplate)
+    ? config.customTargetUrlTemplate
+    : DEFAULT_TARGET_URL_TEMPLATE;
+}
+
+function migrateTargetConfig(
+  value: Record<string, unknown>,
+): Pick<AppConfig, 'targetMode' | 'customTargetUrlTemplate'> {
+  if (isTargetMode(value.targetMode)) {
+    const customTargetUrlTemplate = isTargetUrlTemplate(value.customTargetUrlTemplate)
+      ? value.customTargetUrlTemplate
+      : '';
+    return {
+      targetMode:
+        value.targetMode === 'custom' && !customTargetUrlTemplate ? 'goldendict' : value.targetMode,
+      customTargetUrlTemplate,
+    };
+  }
+
+  const legacyTemplate = value.targetUrlTemplate;
+  if (isTargetUrlTemplate(legacyTemplate) && legacyTemplate !== DEFAULT_TARGET_URL_TEMPLATE) {
+    return { targetMode: 'custom', customTargetUrlTemplate: legacyTemplate };
+  }
+  return { targetMode: 'goldendict', customTargetUrlTemplate: '' };
 }
 
 function getMigratedTiming(value: unknown, previousDefault: number, currentDefault: number): number {

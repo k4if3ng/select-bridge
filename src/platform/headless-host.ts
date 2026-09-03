@@ -22,6 +22,10 @@ export class HeadlessHost implements PlatformHost {
 
   async stop(): Promise<void> {}
 
+  getSystemUiLanguage(): string {
+    return Intl.DateTimeFormat().resolvedOptions().locale;
+  }
+
   updateState(_state: PlatformState): void {}
 
   showIndicator(_options: IndicatorOptions): void {}
@@ -30,6 +34,16 @@ export class HeadlessHost implements PlatformHost {
 
   openExternalUrl(_url: string): boolean {
     return false;
+  }
+
+  openPath(_path: string): boolean {
+    return false;
+  }
+
+  completeTargetUrlSave(_ok: boolean, _message?: string): void {}
+
+  showError(title: string, message: string): void {
+    console.error(`[${title}] ${message}`);
   }
 
   registerShortcut(shortcut: string): ShortcutRegistrationResult {

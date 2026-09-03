@@ -8,6 +8,7 @@ Windows 平台层提供：
 - 无激活悬浮图标或圆点；
 - 点击和 hover 触发；
 - 自定义全局快捷键及冲突检测；
+- 查询目标子菜单和自定义 URL 原生编辑窗口；
 - 当前用户开机启动；
 - 无控制台的托盘版主程序。
 
@@ -22,7 +23,9 @@ Windows headless 的通用能力和排障见 [`HEADLESS.md`](HEADLESS.md)；本�
 - Windows SDK
 - Visual Studio/Build Tools C++ 桌面开发组件
 - Python 3，且 `python` 位于环境 `PATH`
-- Node.js 18+；SEA 打包要求 Node.js 24+
+- Node.js 18+；SEA 打包要求 Node.js 24+，并且架构需与目标包一致（x64 或 ARM64）
+
+`native/win32/` 中的 C++ 源文件统一使用 UTF-8 编码，`binding.gyp` 通过 MSVC 的 `/utf-8` 选项固定源字符集和执行字符集。修改原生 UI 文案后，请在 Windows 环境重新构建并检查托盘菜单、快捷键设置窗口、URL 设置窗口和状态提示中的中文显示。
 
 可在构建前确认当前环境中的 Python：
 
@@ -45,7 +48,7 @@ pnpm start -- --host=native
 # 启动 Windows 无界面模式
 pnpm start -- --host=headless
 
-# 生成 Windows x64 发布目录
+# 生成 Windows x64 或 ARM64 发布目录
 pnpm build:windows
 
 # 只生成 Portable ZIP
@@ -92,7 +95,7 @@ Win32 UI 线程不能直接调用 JS。窗口必须在创建它的线程销毁�
 
 自定义快捷键至少包含一个修饰键和一个普通键。系统占用检测以实际 `RegisterHotKey` 结果为准；退出或离开 custom 模式时调用 `UnregisterHotKey`。
 
-- 捕获窗口使用普通系统标题栏和标准 `STATIC/EDIT/BUTTON` 控件；快捷键显示区保留自定义按键捕获逻辑，但不自绘界面；
+- 捕获窗口使用普通系统标题栏和标准 `STATIC/EDIT/BUTTON` 控件；快捷键捕获控件保留自定义按键捕获逻辑，并根据字体和 DPI 在加高边框内垂直居中；
 - 输入完整组合后先用独立的探测 ID 检查占用，保存时再次检查并正式注册，预览阶段不会替换当前快捷键；
 - 冲突、无效组合和注册异常使用行内状态提示，不再创建额外警告弹窗；
 - 裸 `Esc/Enter/Tab` 分别用于取消、保存和控件导航，带修饰键时仍作为快捷键候选；
@@ -100,6 +103,24 @@ Win32 UI 线程不能直接调用 JS。窗口必须在创建它的线程销毁�
 - 从设置入口保存只更新快捷键，从未设置的 custom 触发入口保存会同时启用 custom；
 - 全新配置仍预置 `Ctrl+Alt+G`，用户主动移除后以空字符串保存，不自动恢复默认值；
 - 弹窗在当前鼠标所在显示器的工作区居中，不保存窗口位置。
+
+## 查询目标和配置入口
+
+- 托盘图标左键与右键显示同一个上下文菜单；双击消息不另外执行动作；
+- 托盘顶层菜单按“查询目标、触发方式、指示器设置、设置”分组；自定义快捷键入口属于触发方式，触发动作与两种尺寸属于指示器设置，启动与配置文件维护属于设置；
+- “查询目标”使用单选项在 `GoldenDict-ng Popup` 与已保存的自定义 URL 之间切换；自定义模板为空或无效时该单选项禁用，“设置 URL 模板…”负责打开编辑窗口；
+- URL 编辑窗口与快捷键设置窗口是非模态、互斥的单实例设置窗口：同类型重复打开时激活现有窗口，不同类型打开时销毁并替换当前窗口；普通失活、切换应用或打开托盘菜单不会自动关闭；
+- 不同窗口互相替换时直接丢弃尚未保存的 URL 或快捷键捕获状态，不弹确认；URL 正在异步保存时暂不允许替换，快捷键注册的同步临界区天然不会接受新的托盘命令；
+- 快捷键捕获文本水平、垂直居中；URL 文本左对齐、垂直居中。两者都根据当前字体和 DPI 计算内部文本区域，不使用固定像素偏移；
+- URL 保存由 Win32 UI 发往 TypeScript，TypeScript 完成校验和原子持久化后再回传结果；失败时窗口保持打开并显示错误，成功后关闭并立即启用自定义目标；
+- URL 模板允许任意合法 URI scheme，必须且只能包含一个 `{text}`，不得包含空白/控制字符，最大 2048 个 UTF-16 code units；
+- `--target-url` 优先于 `SELECT_BRIDGE_TARGET_URL`，运行时覆盖优先于配置和默认值。存在覆盖时目标选项禁用，编辑窗口只读并提供复制入口；
+- “设置”子菜单在登录时自动启动之后提供“语言”子菜单，并在配置维护入口之前保留分隔线；语言项固定使用自称 `English` 和 `简体中文`；
+- `en-US` 是默认和资源缺失时的回退语言。首次运行或升级缺少 `uiLanguage` 的旧配置时，系统首选 UI 语言属于简体中文语言族则选择 `zh-CN`，否则选择 `en-US`，解析结果只持久化一次；
+- 语言选择先原子保存，成功后通过 `kUpdateTrayMessage` 在 Win32 UI 线程切换。托盘菜单下次打开时使用新语言；当前设置窗口原地刷新标题、标签、按钮和状态，不丢弃 URL 输入、快捷键捕获或焦点；
+- native 文案分别位于 `native/win32/strings/en-US.rc` 与 `native/win32/strings/zh-CN.rc`，使用相同资源 ID 和带 `LANGUAGE` 的 `STRINGTABLE`；加载时按明确语言查找并回退到英文，不使用 `.resw`/PRI；
+- “设置”子菜单同时提供打开配置文件、打开配置目录和原子重新加载。重新加载失败时继续使用旧状态；
+- 托盘写入前严格重读磁盘 JSON，只合并本次改变的字段；无效 JSON 会阻止写入并显示错误。
 
 修改 JS/C++ 原生接口时同步检查：
 
@@ -131,17 +152,21 @@ Windows 运行时使用按用户隔离的命名管道作为轻量单实例锁，
 
 ## 发布包
 
-`pnpm build:windows` 输出：
+`pnpm build:windows` 会根据当前 Node.js 的 `process.arch` 生成对应架构的产物。支持 `x64` 和 `arm64`：
 
 ```text
 release/
-├ SelectBridge-<version>-windows-x64-portable.zip
-└ SelectBridge-<version>-windows-x64-setup.exe
+├ SelectBridge-<version>-windows-<arch>-portable.zip
+└ SelectBridge-<version>-windows-<arch>-setup.exe
 ```
+
+其中 `<arch>` 为 `x64` 或 `arm64`。GitHub Actions 使用 x64 和 ARM64 runner 分别构建两个架构；ARM64 构建必须使用 ARM64 Node.js、ARM64 native addon 和 `selection-hook` 的 `win32-arm64` 预编译模块；x86/ia32 不在当前支持范围内。
 
 主程序使用 Node SEA，并包含应用和 `selection-hook` 的 JavaScript 代码；两个原生 `.node` 文件保留在外部。主程序清单保留 `asInvoker`，并启用 Common Controls v6 系统视觉样式。
 
 v1.1.1 在 v1.1.0 的宿主模式解耦基础上优化运行时路径：缓存 headless 快捷键解析、避免重复隐藏指示器，并减少配置变更时的重复 native 状态同步。
+
+v1.2.0 修复 Windows native UI 编码，新增 English/简体中文即时切换、托盘查询目标与自定义 URL 编辑入口、schema 10 配置迁移和严格重载，并为 x64/ARM64 Release 及 Pull Request CI 提供独立构建任务。
 
 v1.1.0 将宿主模式与操作系统解耦：Windows 保留默认 native 托盘宿主，同时可显式使用跨平台 headless 宿主。
 

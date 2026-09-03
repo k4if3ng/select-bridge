@@ -13,9 +13,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    name: Run TypeScript tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test
+
   windows:
-    name: Build Windows release
-    runs-on: windows-latest
+    name: Build Windows ${{ matrix.arch }} release
+    needs: test
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            arch: x64
+          - runner: windows-11-arm
+            arch: arm64
 
     steps:
       - name: Check out tagged commit
@@ -34,6 +70,15 @@ jobs:
         with:
           node-version: 24.x
           cache: pnpm
+
+      - name: Verify Node.js architecture
+        shell: pwsh
+        run: |
+          $expected = '${{ matrix.arch }}'
+          $actual = node -p "process.arch"
+          if ($actual -ne $expected) {
+            throw "Expected Node.js architecture '$expected', got '$actual'."
+          }
 
       - name: Validate tag and package version
         shell: pwsh
@@ -59,22 +104,44 @@ jobs:
         shell: pwsh
         run: pnpm build:windows
 
-      - name: Generate SHA-256 checksums
-        shell: pwsh
+      - name: Upload Windows ${{ matrix.arch }} artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: select-bridge-windows-${{ matrix.arch }}
+          path: |
+            release/*.exe
+            release/*.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish Windows release
+    needs: windows
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Assemble release files and checksums
+        shell: bash
         run: |
-          $files = Get-ChildItem -Path release -File |
-            Where-Object { $_.Extension -in @('.exe', '.zip') } |
-            Sort-Object Name
+          set -euo pipefail
+          mkdir -p release
+          find artifacts -type f \( -name '*.exe' -o -name '*.zip' \) -exec cp {} release/ \;
 
-          if (-not $files) {
-            throw 'No Windows release files were generated.'
-          }
+          count=$(find release -maxdepth 1 -type f \( -name '*.exe' -o -name '*.zip' \) | wc -l)
+          if [ "$count" -ne 4 ]; then
+            echo "Expected four Windows release files, found $count."
+            find release -maxdepth 1 -type f -print
+            exit 1
+          fi
 
-          $lines = foreach ($file in $files) {
-            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
-            "$hash *$($file.Name)"
-          }
-          $lines | Set-Content -LiteralPath release/SHA256SUMS.txt -Encoding ascii
+          (
+            cd release
+            sha256sum *.exe *.zip | sort -k2 > SHA256SUMS.txt
+          )
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2

@@ -23,9 +23,11 @@ const iconPath = join(projectRoot, 'resources', 'icon.ico');
 const manifestPath = join(projectRoot, 'resources', 'windows.manifest');
 const packageJson = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'));
 const version = packageJson.version;
+const architecture = resolveWindowsArchitecture(process.arch);
+const architectureName = architecture === 'arm64' ? 'arm64' : 'x64';
 const portableArchive = join(
   releaseDirectory,
-  `SelectBridge-${version}-windows-x64-portable.zip`,
+  `SelectBridge-${version}-windows-${architectureName}-portable.zip`,
 );
 const nativeAddonPath = join(
   projectRoot,
@@ -40,9 +42,10 @@ const selectionHookNativePath = join(
   'node_modules',
   'selection-hook',
   'prebuilds',
-  'win32-x64',
+  `win32-${architectureName}`,
   'selection-hook.node',
 );
+const generatedManifestPath = join(intermediateDirectory, `windows-${architectureName}.manifest`);
 if (process.platform !== 'win32') {
   throw new Error('Windows SEA package must be built on Windows.');
 }
@@ -54,6 +57,16 @@ await rm(intermediateDirectory, { recursive: true, force: true });
 await mkdir(appDirectory, { recursive: true });
 await mkdir(releaseDirectory, { recursive: true });
 await rm(portableArchive, { force: true });
+
+const manifest = await readFile(manifestPath, 'utf8');
+if (!manifest.includes('processorArchitecture="amd64"')) {
+  throw new Error(`Windows manifest is missing the processorArchitecture marker: ${manifestPath}`);
+}
+await writeFile(
+  generatedManifestPath,
+  manifest.replace('processorArchitecture="amd64"', `processorArchitecture="${architecture === 'arm64' ? 'arm64' : 'amd64'}"`),
+  'utf8',
+);
 
 await build({
   entryPoints: [join(projectRoot, 'src', 'index.ts')],
@@ -106,7 +119,7 @@ if (seaResult.status !== 0) {
 await copyFile(process.execPath, executablePath);
 await rcedit(executablePath, {
   icon: iconPath,
-  'application-manifest': manifestPath,
+  'application-manifest': generatedManifestPath,
   'file-version': version,
   'product-version': version,
   'version-string': {
@@ -141,6 +154,7 @@ if (portableResult.status !== 0) {
 
 console.log(`Windows app staging created: ${appDirectory}`);
 console.log(`Portable archive created: ${portableArchive}`);
+console.log(`Windows architecture: ${architectureName}`);
 
 function createPortableArchive(archivePath, sourceRoot) {
   const sevenZip = spawnSync(
@@ -185,4 +199,14 @@ async function setWindowsSubsystem(executable, subsystem) {
 
   image.writeUInt16LE(subsystem, optionalHeader + 68);
   await writeFile(executable, image);
+}
+
+function resolveWindowsArchitecture(nodeArchitecture) {
+  if (nodeArchitecture === 'x64' || nodeArchitecture === 'arm64') {
+    return nodeArchitecture;
+  }
+
+  throw new Error(
+    `Unsupported Windows architecture: ${nodeArchitecture}. Build with x64 or arm64 Node.js.`,
+  );
 }
