@@ -24,6 +24,8 @@ Windows headless 的通用能力和排障见 [`HEADLESS.md`](HEADLESS.md)；本�
 - Python 3，且 `python` 位于环境 `PATH`
 - Node.js 18+；SEA 打包要求 Node.js 24+
 
+`native/win32/` 中的 C++ 源文件统一使用 UTF-8 编码，`binding.gyp` 通过 MSVC 的 `/utf-8` 选项固定源字符集和执行字符集。修改原生 UI 文案后，请在 Windows 环境重新构建并检查托盘菜单、快捷键设置窗口和状态提示中的中文显示。
+
 可在构建前确认当前环境中的 Python：
 
 ```powershell
@@ -142,6 +144,8 @@ release/
 主程序使用 Node SEA，并包含应用和 `selection-hook` 的 JavaScript 代码；两个原生 `.node` 文件保留在外部。主程序清单保留 `asInvoker`，并启用 Common Controls v6 系统视觉样式。
 
 v1.1.1 在 v1.1.0 的宿主模式解耦基础上优化运行时路径：缓存 headless 快捷键解析、避免重复隐藏指示器，并减少配置变更时的重复 native 状态同步。
+
+v1.2.0 修复 Windows native UI 的中文源文件编码：MSVC 构建启用 `/utf-8`，避免 Release 构建按本地代码页解释中文字符串。
 
 v1.1.0 将宿主模式与操作系统解耦：Windows 保留默认 native 托盘宿主，同时可显式使用跨平台 headless 宿主。
 

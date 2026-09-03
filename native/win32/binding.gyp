@@ -22,7 +22,7 @@
       ],
       "msvs_settings": {
         "VCCLCompilerTool": {
-          "AdditionalOptions": ["/std:c++20", "/EHsc"]
+          "AdditionalOptions": ["/std:c++20", "/EHsc", "/utf-8"]
         }
       }
     }
