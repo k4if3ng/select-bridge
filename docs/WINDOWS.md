@@ -22,7 +22,7 @@ Windows headless 的通用能力和排障见 [`HEADLESS.md`](HEADLESS.md)；本�
 - Windows SDK
 - Visual Studio/Build Tools C++ 桌面开发组件
 - Python 3，且 `python` 位于环境 `PATH`
-- Node.js 18+；SEA 打包要求 Node.js 24+
+- Node.js 18+；SEA 打包要求 Node.js 24+，并且架构需与目标包一致（x64 或 ARM64）
 
 `native/win32/` 中的 C++ 源文件统一使用 UTF-8 编码，`binding.gyp` 通过 MSVC 的 `/utf-8` 选项固定源字符集和执行字符集。修改原生 UI 文案后，请在 Windows 环境重新构建并检查托盘菜单、快捷键设置窗口和状态提示中的中文显示。
 
@@ -47,7 +47,7 @@ pnpm start -- --host=native
 # 启动 Windows 无界面模式
 pnpm start -- --host=headless
 
-# 生成 Windows x64 发布目录
+# 生成 Windows x64 或 ARM64 发布目录
 pnpm build:windows
 
 # 只生成 Portable ZIP
@@ -133,13 +133,15 @@ Windows 运行时使用按用户隔离的命名管道作为轻量单实例锁，
 
 ## 发布包
 
-`pnpm build:windows` 输出：
+`pnpm build:windows` 会根据当前 Node.js 的 `process.arch` 生成对应架构的产物。支持 `x64` 和 `arm64`：
 
 ```text
 release/
-├ SelectBridge-<version>-windows-x64-portable.zip
-└ SelectBridge-<version>-windows-x64-setup.exe
+├ SelectBridge-<version>-windows-<arch>-portable.zip
+└ SelectBridge-<version>-windows-<arch>-setup.exe
 ```
+
+其中 `<arch>` 为 `x64` 或 `arm64`。ARM64 构建必须使用 ARM64 Node.js、ARM64 native addon 和 `selection-hook` 的 `win32-arm64` 预编译模块；x86/ia32 不在当前支持范围内。
 
 主程序使用 Node SEA，并包含应用和 `selection-hook` 的 JavaScript 代码；两个原生 `.node` 文件保留在外部。主程序清单保留 `asInvoker`，并启用 Common Controls v6 系统视觉样式。
 

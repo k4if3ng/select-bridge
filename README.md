@@ -30,12 +30,12 @@ SelectBridge 通过 [`selection-hook`](https://github.com/0xfullex/selection-hoo
 
 ### 2. Windows 发布包
 
-从 [GitHub Releases](../../releases/latest) 下载适合你的 Windows x64 包：
+从 [GitHub Releases](../../releases/latest) 下载适合你的 Windows 包。构建脚本支持 x64 和 ARM64；当前 GitHub Actions 默认发布 x64，ARM64 原生包需在 ARM64 Windows + ARM64 Node.js 环境构建：
 
 | 包 | 适合人群 | 说明 |
 | --- | --- | --- |
-| `SelectBridge-<version>-windows-x64-setup.exe` | 大多数用户 | 当前用户安装，无需管理员权限，带开始菜单入口和卸载项 |
-| `SelectBridge-<version>-windows-x64-portable.zip` | 需要便携运行的用户 | 解压后直接运行，可整体移动，不写入安装目录外的程序文件 |
+| `SelectBridge-<version>-windows-<arch>-setup.exe` | 大多数用户 | 当前用户安装，无需管理员权限，带开始菜单入口和卸载项；`<arch>` 为 `x64` 或 `arm64` |
+| `SelectBridge-<version>-windows-<arch>-portable.zip` | 需要便携运行的用户 | 解压后直接运行，可整体移动，不写入安装目录外的程序文件 |
 
 Portable 包必须整体移动，不能只单独移动 `SelectBridge.exe`。便携版配置保存在同目录的 `data/config.json`；安装版配置保存在 `%APPDATA%\select-bridge\config.json`。
 
@@ -164,7 +164,7 @@ headless 模式不会显示冲突提示；它观察全局键盘事件并匹配�
 
 ### Windows 启动时报原生模块错误
 
-发布包必须使用与系统架构匹配的 Windows x64 文件。源码运行 native 宿主时请先执行 `pnpm build:native`；原生模块构建或加载失败时，程序会明确终止，不会隐式启动另一种宿主。需要无界面运行时使用 `pnpm start -- --host=headless`。
+发布包必须使用与系统架构匹配的 Windows 文件。当前构建脚本支持 x64 和 ARM64；源码运行 native 宿主时请使用对应架构的 Node.js 并先执行 `pnpm build:native`。原生模块构建或加载失败时，程序会明确终止，不会隐式启动另一种宿主。需要无界面运行时使用 `pnpm start -- --host=headless`。
 
 ## 从源码运行
 
@@ -231,6 +231,14 @@ release/
 ```
 
 完整的 `build:windows` 需要 Inno Setup 6。发布脚本还会生成 `SHA256SUMS.txt` 并由 GitHub Actions 附加到 Release；详情见 [`docs/WINDOWS.md`](docs/WINDOWS.md)。
+
+## 浏览器扩展探针
+
+仓库还提供一个很小的 Manifest V3 扩展，用来验证浏览器通过右键菜单打开
+`goldendict://` 时的外部协议确认范围。它不注入网页脚本，也不读取网站内容，只把用户
+主动选中的文字交给扩展 service worker；安装和记录步骤见
+[`browser-extension/README.md`](browser-extension/README.md)。该目录用于判断浏览器插件
+方案的可行性，不属于当前桌面程序的发布包。
 
 ## 项目结构与设计
 
