@@ -1,8 +1,8 @@
 # SelectBridge
 
-> 在任意受支持的桌面应用中选中文字，并在 [Goldendict-ng](https://github.com/xiaoyifang/goldendict-ng) 弹窗中查询。
+> 在任意受支持的桌面应用中选中文字，并在 [GoldenDict-ng](https://github.com/xiaoyifang/goldendict-ng) 弹窗中查询。
 
-SelectBridge 通过 [`selection-hook`](https://github.com/0xfullex/selection-hook) 监听全局文本选区，判断何时触发查询，并把选中的文字交给配置的 URL 目标；默认目标为 Goldendict-ng。**它本身不提供词典或翻译服务**。运行宿主与操作系统分开选择：所有平台都支持不创建窗口的 headless 宿主，Windows 另外提供完整系统托盘宿主。
+SelectBridge 通过 [`selection-hook`](https://github.com/0xfullex/selection-hook) 监听全局文本选区，判断何时触发查询，并把选中的文字交给配置的 URL 目标；默认目标为 GoldenDict-ng。**它本身不提供词典或翻译服务**。运行宿主与操作系统分开选择：所有平台都支持不创建窗口的 headless 宿主，Windows 另外提供完整系统托盘宿主。
 
 ```text
 选中文字 → SelectBridge → 配置的 URL 模板 → 翻译应用
@@ -16,7 +16,7 @@ SelectBridge 通过 [`selection-hook`](https://github.com/0xfullex/selection-hoo
 - 选区稳定后自动查询，或通过修饰键、组合快捷键触发；Windows 还支持图标和圆点；
 - Windows、macOS 和 Linux 都可用 headless 模式运行，通过 `selection-hook` 的键盘事件匹配组合快捷键；
 - Windows 悬浮图标支持点击触发或悬浮触发，二者可在托盘菜单中切换；
-- 过滤 Goldendict-ng 自身的选区，避免查询递归；
+- 过滤 GoldenDict-ng 自身的选区，避免查询递归；
 - 对重复文本、过长文本和快速连续选区进行保护；
 - Windows 托盘菜单直接控制启用状态、触发方式、指示器大小、快捷键和开机启动；
 - 提供 Setup 安装包和 Portable 便携包；
@@ -24,9 +24,9 @@ SelectBridge 通过 [`selection-hook`](https://github.com/0xfullex/selection-hoo
 
 ## 安装
 
-### 1. 准备 Goldendict-ng
+### 1. 准备 GoldenDict-ng
 
-先安装并至少启动一次 Goldendict-ng，让系统注册 `goldendict://` 协议。SelectBridge 只负责发送查询，不会替你安装词典或配置 Goldendict-ng。
+先安装并至少启动一次 GoldenDict-ng，让系统注册 `goldendict://` 协议。SelectBridge 只负责发送查询，不会替你安装词典或配置 GoldenDict-ng。
 
 ### 2. Windows 发布包
 
@@ -48,7 +48,7 @@ pnpm install
 pnpm start -- --host=headless --trigger=immediate
 ```
 
-headless 模式不创建托盘、设置窗口或悬浮指示器；查询由系统 URL 处理器转交配置的目标应用。默认目标仍是 Goldendict-ng，使用 `goldendict://` 协议。`icon`/`dot` 配置会在本次运行中切换为 `immediate`，不会覆盖配置文件。这里的 headless 仅表示 SelectBridge 自身不创建 UI，仍需要当前用户的图形桌面、全局选区权限和已注册的目标 URL 处理器。
+headless 模式不创建托盘、设置窗口或悬浮指示器；查询由系统 URL 处理器转交配置的目标应用。默认目标仍是 GoldenDict-ng，使用 `goldendict://` 协议。`icon`/`dot` 配置会在本次运行中切换为 `immediate`，不会覆盖配置文件。这里的 headless 仅表示 SelectBridge 自身不创建 UI，仍需要当前用户的图形桌面、全局选区权限和已注册的目标 URL 处理器。
 
 宿主模式与操作系统能力的关系如下：
 
@@ -66,7 +66,7 @@ headless 模式不创建托盘、设置窗口或悬浮指示器；查询由系�
 
 1. Windows 默认启动 native 托盘宿主；macOS/Linux 默认保持 headless 进程运行；任何平台都可以显式指定 `--host=headless`；
 2. 在任意支持文本选区的应用中选中文字；
-3. 按默认的 **immediate** 模式，SelectBridge 会自动打开 Goldendict-ng 查询弹窗。
+3. 按默认的 **immediate** 模式，SelectBridge 会自动打开 GoldenDict-ng 查询弹窗。
 
 Windows 可通过左键或右键打开同一个托盘上下文菜单，暂停监听、切换查询目标和触发方式、调整指示器、设置快捷键或退出程序。
 
@@ -96,16 +96,18 @@ Windows 的图标和圆点模式都可以选择 `click` 或 `hover`：
 | 选项 | 默认值 | 作用 |
 | --- | ---: | --- |
 | 启用选词转发 | 开启 | 暂停或恢复全局选区监听 |
-| 查询目标 | Goldendict-ng 弹窗 | 在默认目标和已保存的自定义 URL 之间切换 |
+| 查询目标 | GoldenDict-ng Popup | 在默认目标和已保存的自定义 URL 之间切换 |
 | 触发方式 | `immediate` | 选择自动、指示器、修饰键或自定义快捷键 |
 | 指示器动作 | `click` | 图标/圆点使用点击还是悬浮触发 |
 | 图标大小 | `32 px` | 可选 24/28/32/36/40 px |
 | 圆点大小 | `16 px` | 可选 12/16/20/24/28 px |
-| 开机启动 | 关闭 | 当前 Windows 用户登录后自动启动 |
+| 登录时自动启动 | 关闭 | 当前 Windows 用户登录后自动启动 |
 
-“查询目标 → 设置自定义 URL…”会打开轻量原生编辑窗口。模板必须以合法 URI scheme 开头，长度不超过 2048 个字符，不能包含空白或控制字符，并且必须且只能包含一个 `{text}`。保存成功后会立即切换为自定义 URL；切回 Goldendict-ng 不会删除已保存模板。
+托盘顶层只保留查询目标、触发方式、指示器设置和设置四组入口。“触发方式”包含自定义快捷键设置，“指示器设置”包含触发动作及图标/圆点尺寸，“设置”包含登录时自动启动和配置文件维护。
 
-“高级”子菜单可以打开配置文件、打开配置目录或重新加载配置。托盘保存前会重新读取磁盘文件并只合并本次变更；如果 JSON 已损坏，程序会保留运行中的旧状态并显示错误，不会覆盖文件。
+“查询目标 → 设置 URL 模板…”会打开轻量原生编辑窗口。模板必须以合法 URI scheme 开头，长度不超过 2048 个字符，不能包含空白或控制字符，并且必须且只能包含一个 `{text}`。保存成功后会立即切换为自定义 URL；切回 GoldenDict-ng 不会删除已保存模板。
+
+“设置”子菜单可以打开配置文件、打开配置目录或重新加载配置。托盘保存前会重新读取磁盘文件并只合并本次变更；如果 JSON 已损坏，程序会保留运行中的旧状态并显示错误，不会覆盖文件。
 
 ### 配置文件位置
 
@@ -153,7 +155,7 @@ pnpm start -- --target-url="youdao://query?word={text}"
 ### 选中文字后没有反应
 
 1. 确认 SelectBridge 仍在运行；Windows 同时确认托盘中的“启用选词转发”已打开；
-2. 确认 Goldendict-ng 已启动过，并且系统能处理 `goldendict://` 协议；
+2. 确认 GoldenDict-ng 已启动过，并且系统能处理 `goldendict://` 协议；
 3. 如果使用 `ctrl`、`alt`、`shift` 或 `custom`，按对应的触发键；
 4. 选区超过 `SELECT_BRIDGE_MAX_LENGTH`（默认 200 个字符）时会被忽略。
 
@@ -218,7 +220,7 @@ pnpm start -- --host=headless
 pnpm start -- --host=native
 ```
 
-`pnpm start` 会启动真实的全局选区钩子，并可能唤起 Goldendict-ng。Windows 默认还会启动托盘和原生系统快捷键；headless 模式不创建 UI。仅在需要交互验证时运行。
+`pnpm start` 会启动真实的全局选区钩子，并可能唤起 GoldenDict-ng。Windows 默认还会启动托盘和原生系统快捷键；headless 模式不创建 UI。仅在需要交互验证时运行。
 
 ### 构建发布包
 
@@ -256,7 +258,7 @@ release/
 核心流程保持平台无关，平台能力和翻译目标通过接口隔离：
 
 ```text
-selection-hook → 选区适配层 → 触发控制器 → PlatformHost → Goldendict-ng
+selection-hook → 选区适配层 → 触发控制器 → PlatformHost → GoldenDict-ng
                                                     ├ WindowsNativeHost
                                                     └ HeadlessHost
 ```
@@ -277,7 +279,7 @@ selection-hook → 选区适配层 → 触发控制器 → PlatformHost → Gold
 ## 当前边界
 
 - 所有平台支持 headless；Windows 额外支持 native 托盘宿主，并默认使用 native；
-- 默认翻译目标为 Goldendict-ng popup，同时支持通过 URL 模板配置其他目标协议；
+- 默认翻译目标为 GoldenDict-ng popup，同时支持通过 URL 模板配置其他目标协议；
 - headless 当前不提供托盘、悬浮指示器、开机启动管理或快捷键占用检测；
 - 非 Windows 平台当前不提供应用级单实例保护；
 - 暂未包含代码签名、自动更新和完整的图形化设置页；

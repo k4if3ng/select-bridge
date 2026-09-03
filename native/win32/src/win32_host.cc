@@ -75,6 +75,7 @@ constexpr UINT kShortcutStatusLabel = 1603;
 constexpr UINT kShortcutRemoveButton = 1604;
 constexpr UINT kShortcutCancelButton = 1605;
 constexpr UINT kShortcutSaveButton = 1606;
+constexpr UINT kShortcutValueFrame = 1607;
 constexpr UINT kTargetUrlInstructions = 1700;
 constexpr UINT kTargetUrlFieldLabel = 1701;
 constexpr UINT kTargetUrlEdit = 1702;
@@ -82,6 +83,7 @@ constexpr UINT kTargetUrlStatusLabel = 1703;
 constexpr UINT kTargetUrlCopyButton = 1704;
 constexpr UINT kTargetUrlCancelButton = 1705;
 constexpr UINT kTargetUrlSaveButton = 1706;
+constexpr UINT kTargetUrlEditFrame = 1707;
 
 constexpr COLORREF kIndicatorColor = RGB(31, 111, 235);
 constexpr COLORREF kIndicatorBackgroundColor = RGB(255, 255, 255);
@@ -444,6 +446,17 @@ UINT GetWindowDpiCompat(HWND window) {
 
 int ScaleForDpi(int value, UINT dpi) {
   return MulDiv(value, static_cast<int>(dpi), 96);
+}
+
+int MeasureFontHeight(HWND window, HFONT font, int fallback) {
+  HDC context = GetDC(window);
+  if (!context) return fallback;
+  HGDIOBJ previous = font ? SelectObject(context, font) : nullptr;
+  TEXTMETRICW metrics{};
+  const bool measured = GetTextMetricsW(context, &metrics) == TRUE;
+  if (previous) SelectObject(context, previous);
+  ReleaseDC(window, context);
+  return measured ? metrics.tmHeight : fallback;
 }
 
 void ResizeAndCenterWindow(HWND window,
@@ -984,18 +997,20 @@ void Win32Host::RemoveTrayIcon() {
 void Win32Host::ShowTrayMenu() {
   HMENU menu = CreatePopupMenu();
   HMENU trigger_menu = CreatePopupMenu();
+  HMENU indicator_menu = CreatePopupMenu();
   HMENU indicator_action_menu = CreatePopupMenu();
   HMENU icon_size_menu = CreatePopupMenu();
   HMENU dot_size_menu = CreatePopupMenu();
   HMENU target_menu = CreatePopupMenu();
-  HMENU advanced_menu = CreatePopupMenu();
-  if (!menu || !trigger_menu || !indicator_action_menu || !icon_size_menu ||
-      !dot_size_menu || !target_menu || !advanced_menu) {
-    if (advanced_menu) DestroyMenu(advanced_menu);
+  HMENU settings_menu = CreatePopupMenu();
+  if (!menu || !trigger_menu || !indicator_menu || !indicator_action_menu ||
+      !icon_size_menu || !dot_size_menu || !target_menu || !settings_menu) {
+    if (settings_menu) DestroyMenu(settings_menu);
     if (target_menu) DestroyMenu(target_menu);
     if (dot_size_menu) DestroyMenu(dot_size_menu);
     if (icon_size_menu) DestroyMenu(icon_size_menu);
     if (indicator_action_menu) DestroyMenu(indicator_action_menu);
+    if (indicator_menu) DestroyMenu(indicator_menu);
     if (trigger_menu) DestroyMenu(trigger_menu);
     if (menu) DestroyMenu(menu);
     return;
@@ -1011,7 +1026,7 @@ void Win32Host::ShowTrayMenu() {
   AppendMenuW(target_menu,
               MF_STRING | (target_locked ? MF_GRAYED : MF_ENABLED),
               kCommandTargetGoldendict,
-              L"Goldendict-ng 弹窗");
+              L"GoldenDict-ng Popup");
   AppendMenuW(target_menu,
               MF_STRING | (target_locked || custom_target_url_.empty() ? MF_GRAYED : MF_ENABLED),
               kCommandTargetCustom,
@@ -1022,25 +1037,31 @@ void Win32Host::ShowTrayMenu() {
                      target_mode_ == "custom" ? kCommandTargetCustom : kCommandTargetGoldendict,
                      MF_BYCOMMAND);
   AppendMenuW(target_menu, MF_SEPARATOR, 0, nullptr);
-  AppendMenuW(target_menu, MF_STRING, kCommandSetTargetUrl, L"设置自定义 URL…");
+  AppendMenuW(target_menu, MF_STRING, kCommandSetTargetUrl, L"设置 URL 模板…");
   AppendMenuW(menu,
               MF_POPUP,
               reinterpret_cast<UINT_PTR>(target_menu),
-              target_locked ? L"查询目标（运行参数覆盖）" : L"查询目标");
+              target_locked ? L"查询目标（运行时覆盖）" : L"查询目标");
 
-  AppendMenuW(trigger_menu, MF_STRING, kCommandImmediate, L"立即触发");
+  AppendMenuW(trigger_menu, MF_STRING, kCommandImmediate, L"立即转发");
   AppendMenuW(trigger_menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(trigger_menu, MF_STRING, kCommandIcon, L"显示图标");
   AppendMenuW(trigger_menu, MF_STRING, kCommandDot, L"显示圆点");
   AppendMenuW(trigger_menu, MF_SEPARATOR, 0, nullptr);
-  AppendMenuW(trigger_menu, MF_STRING, kCommandCtrl, L"按 Ctrl 触发");
-  AppendMenuW(trigger_menu, MF_STRING, kCommandAlt, L"按 Alt 触发");
-  AppendMenuW(trigger_menu, MF_STRING, kCommandShift, L"按 Shift 触发");
+  AppendMenuW(trigger_menu, MF_STRING, kCommandCtrl, L"按 Ctrl 转发");
+  AppendMenuW(trigger_menu, MF_STRING, kCommandAlt, L"按 Alt 转发");
+  AppendMenuW(trigger_menu, MF_STRING, kCommandShift, L"按 Shift 转发");
   AppendMenuW(trigger_menu,
               MF_STRING,
               kCommandCustom,
               custom_shortcut_.empty() ? L"自定义快捷键（未设置）"
                                        : L"自定义快捷键");
+  AppendMenuW(trigger_menu, MF_SEPARATOR, 0, nullptr);
+  const std::wstring shortcut_label = custom_shortcut_.empty()
+                                            ? L"设置自定义快捷键…"
+                                            : L"设置自定义快捷键…（" +
+                                                  Utf8ToWideLocal(custom_shortcut_) + L"）";
+  AppendMenuW(trigger_menu, MF_STRING, kCommandSetShortcut, shortcut_label.c_str());
 
   const UINT checked_command = trigger_mode_ == "icon"      ? kCommandIcon
                                : trigger_mode_ == "dot"     ? kCommandDot
@@ -1068,11 +1089,10 @@ void Win32Host::ShowTrayMenu() {
                      indicator_action_ == "hover" ? kCommandIndicatorHover
                                                   : kCommandIndicatorClick,
                      MF_BYCOMMAND);
-  const bool indicator_mode = trigger_mode_ == "icon" || trigger_mode_ == "dot";
-  AppendMenuW(menu,
-              MF_POPUP | (indicator_mode ? MF_ENABLED : MF_GRAYED),
+  AppendMenuW(indicator_menu,
+              MF_POPUP,
               reinterpret_cast<UINT_PTR>(indicator_action_menu),
-              L"图标/圆点触发方式");
+              L"触发动作");
 
   AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize24, L"24 px");
   AppendMenuW(icon_size_menu, MF_STRING, kCommandIconSize28, L"28 px");
@@ -1089,7 +1109,7 @@ void Win32Host::ShowTrayMenu() {
                      kCommandIconSize40,
                      checked_icon_size,
                      MF_BYCOMMAND);
-  AppendMenuW(menu,
+  AppendMenuW(indicator_menu,
               MF_POPUP,
               reinterpret_cast<UINT_PTR>(icon_size_menu),
               L"图标大小");
@@ -1109,28 +1129,28 @@ void Win32Host::ShowTrayMenu() {
                      kCommandDotSize28,
                      checked_dot_size,
                      MF_BYCOMMAND);
-  AppendMenuW(menu,
+  AppendMenuW(indicator_menu,
               MF_POPUP,
               reinterpret_cast<UINT_PTR>(dot_size_menu),
               L"圆点大小");
 
-  const std::wstring shortcut_label = custom_shortcut_.empty()
-                                            ? L"设置自定义快捷键…"
-                                            : L"设置自定义快捷键…（" +
-                                                  Utf8ToWideLocal(custom_shortcut_) + L"）";
-  AppendMenuW(menu, MF_STRING, kCommandSetShortcut, shortcut_label.c_str());
-  AppendMenuW(menu,
-              MF_STRING | (auto_start_ ? MF_CHECKED : MF_UNCHECKED),
-              kCommandToggleAutoStart,
-              L"开机启动");
-  AppendMenuW(advanced_menu, MF_STRING, kCommandOpenConfigFile, L"打开配置文件");
-  AppendMenuW(advanced_menu, MF_STRING, kCommandOpenConfigDirectory, L"打开配置目录");
-  AppendMenuW(advanced_menu, MF_SEPARATOR, 0, nullptr);
-  AppendMenuW(advanced_menu, MF_STRING, kCommandReloadConfig, L"重新加载配置");
   AppendMenuW(menu,
               MF_POPUP,
-              reinterpret_cast<UINT_PTR>(advanced_menu),
-              L"高级");
+              reinterpret_cast<UINT_PTR>(indicator_menu),
+              L"指示器设置");
+
+  AppendMenuW(settings_menu,
+              MF_STRING | (auto_start_ ? MF_CHECKED : MF_UNCHECKED),
+              kCommandToggleAutoStart,
+              L"登录时自动启动");
+  AppendMenuW(settings_menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(settings_menu, MF_STRING, kCommandOpenConfigFile, L"打开配置文件");
+  AppendMenuW(settings_menu, MF_STRING, kCommandOpenConfigDirectory, L"打开配置目录");
+  AppendMenuW(settings_menu, MF_STRING, kCommandReloadConfig, L"重新加载配置");
+  AppendMenuW(menu,
+              MF_POPUP,
+              reinterpret_cast<UINT_PTR>(settings_menu),
+              L"设置");
   AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(menu, MF_STRING, kCommandExit, L"退出");
 
@@ -1242,9 +1262,12 @@ void Win32Host::HandleTrayCommand(unsigned int command) {
 
 void Win32Host::ShowShortcutCapture(bool activate_after_save) {
   if (target_url_window_) {
-    ShowWindow(target_url_window_, SW_RESTORE);
-    SetForegroundWindow(target_url_window_);
-    return;
+    if (target_url_save_pending_) {
+      ShowWindow(target_url_window_, SW_RESTORE);
+      SetForegroundWindow(target_url_window_);
+      return;
+    }
+    CloseTargetUrlEditor();
   }
   if (shortcut_window_) {
     shortcut_activate_after_save_ = shortcut_activate_after_save_ || activate_after_save;
@@ -1304,8 +1327,21 @@ void Win32Host::ShowShortcutCapture(bool activate_after_save) {
       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kShortcutFieldLabel)),
       instance_,
       nullptr);
-  shortcut_value_edit_ = CreateWindowExW(
+  shortcut_value_frame_ = CreateWindowExW(
       WS_EX_CLIENTEDGE,
+      L"STATIC",
+      L"",
+      WS_CHILD | WS_VISIBLE | SS_WHITERECT | SS_NOTIFY,
+      0,
+      0,
+      0,
+      0,
+      shortcut_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kShortcutValueFrame)),
+      instance_,
+      nullptr);
+  shortcut_value_edit_ = CreateWindowExW(
+      0,
       L"EDIT",
       L"",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_CENTER | ES_READONLY | ES_AUTOHSCROLL,
@@ -1370,7 +1406,8 @@ void Win32Host::ShowShortcutCapture(bool activate_after_save) {
       instance_,
       nullptr);
 
-  if (!shortcut_instructions_ || !shortcut_field_label_ || !shortcut_value_edit_ ||
+  if (!shortcut_instructions_ || !shortcut_field_label_ || !shortcut_value_frame_ ||
+      !shortcut_value_edit_ ||
       !shortcut_status_label_ || !shortcut_remove_button_ ||
       !shortcut_cancel_button_ || !shortcut_save_button_) {
     CloseShortcutCapture();
@@ -1380,10 +1417,6 @@ void Win32Host::ShowShortcutCapture(bool activate_after_save) {
   RecreateShortcutFonts();
   ApplyShortcutFonts();
   LayoutShortcutCapture();
-  SendMessageW(shortcut_value_edit_,
-               kEditSetCueBannerMessage,
-               TRUE,
-               reinterpret_cast<LPARAM>(L"按下组合快捷键"));
   UpdateShortcutCapture(ShortcutCaptureState::current, custom_shortcut_);
 
   ShowWindow(shortcut_window_, SW_SHOW);
@@ -1416,7 +1449,21 @@ void Win32Host::LayoutShortcutCapture() {
   };
   position(shortcut_instructions_, 24, 10, 352, 22);
   position(shortcut_field_label_, 24, 40, 352, 18);
-  position(shortcut_value_edit_, 24, 64, 352, 36);
+  const int frame_x = scaled(24);
+  const int frame_y = scaled(64);
+  const int frame_width = scaled(352);
+  const int frame_height = scaled(36);
+  SetWindowPos(shortcut_value_frame_, nullptr, frame_x, frame_y, frame_width, frame_height,
+               SWP_NOACTIVATE | SWP_NOZORDER);
+  const int text_height = MeasureFontHeight(shortcut_value_edit_, shortcut_value_font_, scaled(18));
+  const int edit_height = std::min(frame_height - scaled(6), text_height + scaled(6));
+  SetWindowPos(shortcut_value_edit_,
+               nullptr,
+               frame_x + scaled(6),
+               frame_y + (frame_height - edit_height) / 2,
+               frame_width - scaled(12),
+               edit_height,
+               SWP_NOACTIVATE | SWP_NOZORDER);
   position(shortcut_status_label_, 24, 106, 352, 18);
   position(shortcut_remove_button_, 24, 134, 80, 30);
   position(shortcut_cancel_button_, 204, 134, 80, 30);
@@ -1626,9 +1673,7 @@ void Win32Host::RemoveCapturedShortcut() {
 
 void Win32Host::ShowTargetUrlEditor() {
   if (shortcut_window_) {
-    ShowWindow(shortcut_window_, SW_RESTORE);
-    SetForegroundWindow(shortcut_window_);
-    return;
+    CloseShortcutCapture();
   }
   if (target_url_window_) {
     ShowWindow(target_url_window_, SW_RESTORE);
@@ -1638,7 +1683,7 @@ void Win32Host::ShowTargetUrlEditor() {
   }
 
   if (target_url_save_pending_) {
-    MessageBoxW(owner_window_, L"自定义 URL 正在保存，请稍候。", L"设置自定义 URL",
+    MessageBoxW(owner_window_, L"自定义 URL 正在保存，请稍候。", L"设置 URL 模板",
                 MB_OK | MB_ICONINFORMATION);
     return;
   }
@@ -1647,7 +1692,7 @@ void Win32Host::ShowTargetUrlEditor() {
   constexpr DWORD window_style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
   target_url_window_ = CreateWindowExW(extended_style,
                                        kTargetUrlClassName,
-                                       L"设置自定义 URL",
+                                       L"设置 URL 模板",
                                        window_style,
                                        CW_USEDEFAULT,
                                        CW_USEDEFAULT,
@@ -1673,7 +1718,11 @@ void Win32Host::ShowTargetUrlEditor() {
       WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX,
       0, 0, 0, 0, target_url_window_,
       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlFieldLabel)), instance_, nullptr);
-  target_url_edit_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
+  target_url_edit_frame_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"STATIC", L"",
+      WS_CHILD | WS_VISIBLE | SS_WHITERECT | SS_NOTIFY,
+      0, 0, 0, 0, target_url_window_,
+      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlEditFrame)), instance_, nullptr);
+  target_url_edit_ = CreateWindowExW(0, L"EDIT", L"",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | (locked ? ES_READONLY : 0),
       0, 0, 0, 0, target_url_window_,
       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlEdit)), instance_, nullptr);
@@ -1694,7 +1743,8 @@ void Win32Host::ShowTargetUrlEditor() {
       0, 0, 0, 0, target_url_window_,
       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTargetUrlSaveButton)), instance_, nullptr);
 
-  if (!target_url_instructions_ || !target_url_field_label_ || !target_url_edit_ ||
+  if (!target_url_instructions_ || !target_url_field_label_ || !target_url_edit_frame_ ||
+      !target_url_edit_ ||
       !target_url_status_label_ || !target_url_copy_button_ || !target_url_cancel_button_ ||
       !target_url_save_button_) {
     CloseTargetUrlEditor();
@@ -1728,8 +1778,22 @@ void Win32Host::LayoutTargetUrlEditor() {
   };
   position(target_url_instructions_, 24, 12, 492, 40);
   position(target_url_field_label_, 24, 58, 492, 18);
-  position(target_url_edit_, 24, 80, 492, 30);
-  position(target_url_status_label_, 24, 116, 492, 34);
+  const int frame_x = scaled(24);
+  const int frame_y = scaled(80);
+  const int frame_width = scaled(492);
+  const int frame_height = scaled(36);
+  SetWindowPos(target_url_edit_frame_, nullptr, frame_x, frame_y, frame_width, frame_height,
+               SWP_NOACTIVATE | SWP_NOZORDER);
+  const int text_height = MeasureFontHeight(target_url_edit_, target_url_font_, scaled(16));
+  const int edit_height = std::min(frame_height - scaled(6), text_height + scaled(6));
+  SetWindowPos(target_url_edit_,
+               nullptr,
+               frame_x + scaled(6),
+               frame_y + (frame_height - edit_height) / 2,
+               frame_width - scaled(12),
+               edit_height,
+               SWP_NOACTIVATE | SWP_NOZORDER);
+  position(target_url_status_label_, 24, 122, 492, 34);
   position(target_url_copy_button_, 252, 170, 80, 30);
   position(target_url_cancel_button_, 344, 170, 80, 30);
   position(target_url_save_button_, 436, 170, 80, 30);
@@ -1795,6 +1859,7 @@ void Win32Host::SaveTargetUrl() {
   target_url_save_pending_ = true;
   pending_target_url_ = WideToUtf8Local(value);
   EnableWindow(target_url_edit_, FALSE);
+  EnableWindow(target_url_cancel_button_, FALSE);
   EnableWindow(target_url_save_button_, FALSE);
   SetWindowTextW(target_url_status_label_, L"正在保存…");
   SendEvent("save-target-url", pending_target_url_);
@@ -1833,6 +1898,7 @@ void Win32Host::ApplyTargetUrlSaveResult(bool ok, const std::string& message) {
   pending_target_url_.clear();
   if (!target_url_window_) return;
   EnableWindow(target_url_edit_, TRUE);
+  EnableWindow(target_url_cancel_button_, TRUE);
   const std::wstring error = Utf8ToWideLocal(message.empty() ? "保存失败，请重试。" : message);
   SetWindowTextW(target_url_status_label_, error.c_str());
   const int length = GetWindowTextLengthW(target_url_edit_);
@@ -2357,6 +2423,10 @@ LRESULT CALLBACK Win32Host::ShortcutWindowProc(HWND window,
     case WM_GETDLGCODE:
       return DLGC_WANTALLKEYS;
     case WM_COMMAND:
+      if (LOWORD(wparam) == kShortcutValueFrame) {
+        SetFocus(host->shortcut_value_edit_);
+        return 0;
+      }
       if (LOWORD(wparam) == kShortcutSaveButton) {
         host->SaveCapturedShortcut();
         return 0;
@@ -2391,6 +2461,7 @@ LRESULT CALLBACK Win32Host::ShortcutWindowProc(HWND window,
     case WM_SETTINGCHANGE:
       host->RecreateShortcutFonts();
       host->ApplyShortcutFonts();
+      host->LayoutShortcutCapture();
       RedrawWindow(window,
                    nullptr,
                    nullptr,
@@ -2410,6 +2481,7 @@ LRESULT CALLBACK Win32Host::ShortcutWindowProc(HWND window,
       host->shortcut_window_ = nullptr;
       host->shortcut_instructions_ = nullptr;
       host->shortcut_field_label_ = nullptr;
+      host->shortcut_value_frame_ = nullptr;
       host->shortcut_value_edit_ = nullptr;
       host->shortcut_status_label_ = nullptr;
       host->shortcut_remove_button_ = nullptr;
@@ -2446,7 +2518,9 @@ LRESULT CALLBACK Win32Host::TargetUrlWindowProc(HWND window,
     case WM_SYSKEYDOWN: {
       if ((wparam == VK_F4 && IsVirtualKeyDown(VK_MENU)) ||
           (wparam == VK_ESCAPE && !HasShortcutModifierDown())) {
-        host->CloseTargetUrlEditor();
+        if (!host->target_url_save_pending_) {
+          host->CloseTargetUrlEditor();
+        }
         return 0;
       }
       if (wparam == VK_RETURN) {
@@ -2485,6 +2559,10 @@ LRESULT CALLBACK Win32Host::TargetUrlWindowProc(HWND window,
       break;
     }
     case WM_COMMAND:
+      if (LOWORD(wparam) == kTargetUrlEditFrame) {
+        SetFocus(host->target_url_edit_);
+        return 0;
+      }
       if (LOWORD(wparam) == kTargetUrlEdit && HIWORD(wparam) == EN_CHANGE) {
         host->UpdateTargetUrlValidation();
         return 0;
@@ -2498,7 +2576,9 @@ LRESULT CALLBACK Win32Host::TargetUrlWindowProc(HWND window,
         return 0;
       }
       if (LOWORD(wparam) == kTargetUrlCancelButton) {
-        host->CloseTargetUrlEditor();
+        if (!host->target_url_save_pending_) {
+          host->CloseTargetUrlEditor();
+        }
         return 0;
       }
       break;
@@ -2520,12 +2600,15 @@ LRESULT CALLBACK Win32Host::TargetUrlWindowProc(HWND window,
                    RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
       return 0;
     case WM_CLOSE:
-      host->CloseTargetUrlEditor();
+      if (!host->target_url_save_pending_) {
+        host->CloseTargetUrlEditor();
+      }
       return 0;
     case WM_DESTROY:
       host->target_url_window_ = nullptr;
       host->target_url_instructions_ = nullptr;
       host->target_url_field_label_ = nullptr;
+      host->target_url_edit_frame_ = nullptr;
       host->target_url_edit_ = nullptr;
       host->target_url_status_label_ = nullptr;
       host->target_url_copy_button_ = nullptr;

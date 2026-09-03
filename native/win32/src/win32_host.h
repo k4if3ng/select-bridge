@@ -129,6 +129,7 @@ class Win32Host {
   HWND target_url_window_ = nullptr;
   HWND target_url_instructions_ = nullptr;
   HWND target_url_field_label_ = nullptr;
+  HWND target_url_edit_frame_ = nullptr;
   HWND target_url_edit_ = nullptr;
   HWND target_url_status_label_ = nullptr;
   HWND target_url_copy_button_ = nullptr;
@@ -137,6 +138,7 @@ class Win32Host {
   HFONT target_url_font_ = nullptr;
   HWND shortcut_instructions_ = nullptr;
   HWND shortcut_field_label_ = nullptr;
+  HWND shortcut_value_frame_ = nullptr;
   HWND shortcut_value_edit_ = nullptr;
   HWND shortcut_status_label_ = nullptr;
   HWND shortcut_remove_button_ = nullptr;
