@@ -56,6 +56,7 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
     controller.dispose();
     hook?.stop();
     hook?.cleanup();
+    await configStore.flush();
     await platform.stop();
     await instanceGuard.close();
   };
@@ -158,8 +159,8 @@ async function handlePlatformEvent(
       return;
     }
 
-    await configStore.save(updated);
     controller.replaceConfig(updated);
+    await configStore.flush();
     return;
   }
 

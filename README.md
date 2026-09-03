@@ -197,6 +197,12 @@ pnpm build:native
 # 仅检查原生模块是否可加载，不创建窗口
 pnpm check:native
 
+# 运行 TypeScript 单元测试
+pnpm test
+
+# 运行 TypeScript 单元测试
+pnpm test
+
 # 使用当前系统的默认宿主
 pnpm start
 

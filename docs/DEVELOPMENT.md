@@ -11,6 +11,9 @@
 ```powershell
 pnpm install
 pnpm build
+
+# 运行 TypeScript 单元测试
+pnpm test
 ```
 
 运行：

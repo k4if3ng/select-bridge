@@ -10,6 +10,7 @@
     "build:windows:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -SkipSetup",
     "build:windows:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-setup.ps1",
     "check:native": "node scripts/check-native.cjs",
+    "test": "pnpm build && node --test test/config.test.mjs test/url-target.test.mjs",
     "start": "tsc -p tsconfig.json && node dist/index.js"
   },
   "keywords": [],

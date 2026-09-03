@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -64,6 +64,7 @@ export const DEFAULT_CONFIG: Readonly<AppConfig> = {
 
 export class ConfigStore {
   readonly path: string;
+  private saveQueue: Promise<void> = Promise.resolve();
 
   constructor(path = resolveConfigPath()) {
     this.path = path;
@@ -87,8 +88,35 @@ export class ConfigStore {
   }
 
   async save(config: AppConfig): Promise<void> {
+    const operation = this.saveQueue.then(() => this.writeAtomically(config));
+    this.saveQueue = operation.catch(() => undefined);
+    return operation;
+  }
+
+  async flush(): Promise<void> {
+    await this.saveQueue;
+  }
+
+  private async writeAtomically(config: AppConfig): Promise<void> {
     await mkdir(dirname(this.path), { recursive: true });
-    await writeFile(this.path, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+    const temporaryPath = `${this.path}.${process.pid}.${Date.now()}.tmp`;
+    const contents = `${JSON.stringify(config, null, 2)}\n`;
+
+    try {
+      await writeFile(temporaryPath, contents, 'utf8');
+      try {
+        await rename(temporaryPath, this.path);
+      } catch (error: unknown) {
+        if (!isNodeError(error) || !['EEXIST', 'EPERM'].includes(error.code ?? '')) {
+          throw error;
+        }
+
+        await rm(this.path, { force: true });
+        await rename(temporaryPath, this.path);
+      }
+    } finally {
+      await rm(temporaryPath, { force: true });
+    }
   }
 }
 
