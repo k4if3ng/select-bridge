@@ -23,6 +23,21 @@ SelectBridge 本身不提供词典或翻译服务。Windows 默认使用轻量�
 
 ## 安装
 
+### Scoop
+
+添加 `hoarfrost` bucket 并安装 SelectBridge：
+
+```powershell
+scoop bucket add hoarfrost https://github.com/k4if3ng/hoarfrost
+scoop install hoarfrost/select-bridge
+```
+
+Scoop manifest 支持 Windows x64 和 ARM64 包。后续稳定版本可以通过以下命令安装：
+
+```powershell
+scoop update select-bridge
+```
+
 ### Windows 发布包
 
 从 [GitHub Releases](../../releases/latest) 下载与系统架构匹配的包：
