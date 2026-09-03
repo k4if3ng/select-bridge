@@ -32,10 +32,12 @@ export class TriggerController {
   private lastForwardedText = '';
   private lastForwardedProgram = '';
   private lastForwardedAt = 0;
+  private indicatorVisible = false;
   private readonly portableShortcutMatcher = new PortableShortcutMatcher();
 
   constructor(private readonly options: TriggerControllerOptions) {
     this.config = options.config;
+    this.portableShortcutMatcher.setShortcut(this.config.customShortcut);
   }
 
   handleSelection(event: SelectionEvent): void {
@@ -79,14 +81,14 @@ export class TriggerController {
     if (
       this.config.triggerMode === 'custom' &&
       this.options.portableCustomShortcut &&
-      this.portableShortcutMatcher.keyDown(event.key, this.config.customShortcut)
+      this.portableShortcutMatcher.keyDown(event.key)
     ) {
       this.triggerCandidate('shortcut');
     }
   }
 
   handleKeyUp(event: KeyEvent): void {
-    if (this.options.portableCustomShortcut) {
+    if (this.config.triggerMode === 'custom' && this.options.portableCustomShortcut) {
       this.portableShortcutMatcher.keyUp(event.key);
     }
   }
@@ -172,6 +174,7 @@ export class TriggerController {
   replaceConfig(config: AppConfig): void {
     this.config = config;
     this.cancelCandidate();
+    this.portableShortcutMatcher.setShortcut(config.customShortcut);
     this.portableShortcutMatcher.reset();
     this.options.platform.updateState({
       enabled: config.enabled,
@@ -214,6 +217,7 @@ export class TriggerController {
         hoverEnabled: this.config.indicatorAction === 'hover',
         hoverDelayMs: this.config.hoverDelayMs,
       });
+      this.indicatorVisible = true;
     }
 
     this.expiryTimer = setTimeout(() => this.cancelCandidate(), this.config.indicatorTtlMs);
@@ -240,7 +244,7 @@ export class TriggerController {
     this.lastForwardedAt = now;
     this.candidate = undefined;
     this.clearCandidateTimers();
-    this.options.platform.hideIndicator();
+    this.hideIndicator();
 
     console.log(
       `[lookup:${reason}] ${JSON.stringify(candidate.text)}` +
@@ -256,6 +260,15 @@ export class TriggerController {
   private cancelCandidate(): void {
     this.candidate = undefined;
     this.clearCandidateTimers();
+    this.hideIndicator();
+  }
+
+  private hideIndicator(): void {
+    if (!this.indicatorVisible) {
+      return;
+    }
+
+    this.indicatorVisible = false;
     this.options.platform.hideIndicator();
   }
 
@@ -295,8 +308,14 @@ function isValidPoint(point: ScreenPoint): boolean {
   return Number.isFinite(point.x) && Number.isFinite(point.y) && point.x !== -99999 && point.y !== -99999;
 }
 
+const MODIFIER_TRIGGER_KEYS: Partial<Record<TriggerMode, string>> = {
+  ctrl: 'Control',
+  alt: 'Alt',
+  shift: 'Shift',
+};
+
 function getModifierKey(mode: TriggerMode): string | undefined {
-  return ({ ctrl: 'Control', alt: 'Alt', shift: 'Shift' } as Partial<Record<TriggerMode, string>>)[mode];
+  return MODIFIER_TRIGGER_KEYS[mode];
 }
 
 function clampInteger(

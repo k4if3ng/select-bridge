@@ -9,15 +9,30 @@ const MODIFIER_ORDER: readonly ModifierKey[] = ['Control', 'Alt', 'Shift', 'Meta
 
 export class PortableShortcutMatcher {
   private readonly pressedModifiers = new Set<ModifierKey>();
+  private shortcut = '';
+  private parsedShortcut: ParsedShortcut | undefined;
 
-  keyDown(key: string, shortcut: string): boolean {
+  setShortcut(shortcut: string): void {
+    if (shortcut === this.shortcut) {
+      return;
+    }
+
+    this.shortcut = shortcut;
+    this.parsedShortcut = parsePortableShortcut(shortcut);
+  }
+
+  keyDown(key: string, shortcut?: string): boolean {
+    if (shortcut !== undefined) {
+      this.setShortcut(shortcut);
+    }
+
     const modifier = normalizeModifier(key);
     if (modifier) {
       this.pressedModifiers.add(modifier);
       return false;
     }
 
-    const parsed = parsePortableShortcut(shortcut);
+    const parsed = this.parsedShortcut;
     if (!parsed || normalizePrimaryKey(key) !== parsed.key) {
       return false;
     }

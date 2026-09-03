@@ -33,7 +33,6 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
 
   const persistConfig = async (nextConfig: AppConfig): Promise<void> => {
     config = nextConfig;
-    platform.updateState(toPlatformState(nextConfig));
     await configStore.save(nextConfig);
   };
 
@@ -149,7 +148,6 @@ async function handlePlatformEvent(
       return;
     }
 
-    platform.updateState(toPlatformState(updated));
     await configStore.save(updated);
     controller.replaceConfig(updated);
     return;
