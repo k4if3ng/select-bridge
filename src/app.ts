@@ -26,6 +26,8 @@ import type { PlatformEvent, PlatformHost, PlatformState } from './platform/type
 import { createPlatformHost } from './platform/create-platform-host.js';
 import { SelectionHookAdapter } from './selection/selection-hook-adapter.js';
 import { UrlTarget } from './targets/url-target.js';
+import { checkForUpdates } from './updates/update-checker.js';
+import { APP_VERSION } from './version.js';
 
 type ConfigPatch = Partial<AppConfig>;
 
@@ -53,6 +55,8 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
   let hook: SelectionHookAdapter | undefined;
   let shuttingDown = false;
   let changeQueue: Promise<void> = Promise.resolve();
+  let updateCheckPending: Promise<void> | undefined;
+  let updateCheckAbort: AbortController | undefined;
   let controller!: TriggerController;
 
   const platformState = (value: AppConfig): PlatformState => toPlatformState(value, runtime);
@@ -105,6 +109,8 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
     controller.dispose();
     hook?.stop();
     hook?.cleanup();
+    updateCheckAbort?.abort();
+    await updateCheckPending;
     await changeQueue;
     await configStore.flush();
     await platform.stop();
@@ -272,7 +278,56 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
       return;
     }
 
+    if (event.type === 'check-for-updates') {
+      if (updateCheckPending) {
+        return;
+      }
+      updateCheckAbort = new AbortController();
+      updateCheckPending = runUpdateCheck(platform, updateCheckAbort.signal).finally(() => {
+        updateCheckPending = undefined;
+        updateCheckAbort = undefined;
+      });
+      await updateCheckPending;
+      return;
+    }
+
     controller.handlePlatformEvent(event);
+  }
+
+  async function runUpdateCheck(host: PlatformHost, signal: AbortSignal): Promise<void> {
+    try {
+      const result = await checkForUpdates(APP_VERSION, { signal });
+      if (shuttingDown) return;
+      const language = config.uiLanguage;
+      if (result.status === 'up-to-date') {
+        host.showInfo(
+          uiMessage(language, 'updateCheckTitle'),
+          formatUiMessage(language, 'upToDate', { current: result.currentVersion }),
+        );
+        return;
+      }
+
+      const openRelease = host.confirm(
+        uiMessage(language, 'updateCheckTitle'),
+        formatUiMessage(language, 'updateAvailable', {
+          current: result.currentVersion,
+          latest: result.latestVersion,
+        }),
+      );
+      if (openRelease && !host.openExternalUrl(result.releaseUrl)) {
+        host.showError(
+          uiMessage(language, 'openReleaseFailedTitle'),
+          uiMessage(language, 'openReleaseFailed'),
+        );
+      }
+    } catch (error: unknown) {
+      if (shuttingDown) return;
+      const language = config.uiLanguage;
+      host.showError(
+        uiMessage(language, 'updateCheckFailedTitle'),
+        withErrorDetails(language, 'updateCheckFailed', errorMessage(error)),
+      );
+    }
   }
 
   if (config.triggerMode === 'custom' && platform.capabilities.nativeShortcut) {

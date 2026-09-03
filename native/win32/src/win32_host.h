@@ -42,7 +42,9 @@ class Win32Host {
   bool HideIndicator();
   ShortcutResult RegisterShortcut(const std::string& shortcut);
   bool CompleteTargetUrlSave(bool ok, const std::string& message);
+  bool ShowInfo(const std::string& title, const std::string& message);
   bool ShowError(const std::string& title, const std::string& message);
+  bool Confirm(const std::string& title, const std::string& message);
 
   static bool SetAutoStart(bool enabled,
                            const std::wstring& executable_path,
@@ -58,6 +60,7 @@ class Win32Host {
   struct ShortcutRequest;
   struct TargetSaveResult;
   struct ErrorRequest;
+  struct DialogRequest;
   enum class ShortcutCaptureState {
     current,
     waiting,

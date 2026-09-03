@@ -35,6 +35,7 @@ BEGIN
   IDS_MENU_RELOAD_CONFIGURATION "Reload configuration"
   IDS_MENU_SETTINGS "Settings"
   IDS_MENU_EXIT "Exit"
+  IDS_MENU_CHECK_FOR_UPDATES "Check for updates…"
 
   IDS_SHORTCUT_TITLE "Set custom shortcut"
   IDS_SHORTCUT_INSTRUCTIONS "Press a new key combination, then select “Save”."

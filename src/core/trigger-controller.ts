@@ -172,6 +172,7 @@ export class TriggerController {
       case 'open-config-file':
       case 'open-config-directory':
       case 'reload-config':
+      case 'check-for-updates':
         return;
     }
   }

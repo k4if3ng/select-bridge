@@ -324,6 +324,34 @@ napi_value ShowError(napi_env env, napi_callback_info info) {
   return CreateBoolean(env, g_host && g_host->ShowError(title, message));
 }
 
+napi_value ShowInfo(napi_env env, napi_callback_info info) {
+  size_t count = 2;
+  napi_value arguments[2]{};
+  napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
+  std::string title;
+  std::string message;
+  if (count != 2 || !GetUtf8(env, arguments[0], &title) ||
+      !GetUtf8(env, arguments[1], &message)) {
+    ThrowLastError(env, "showInfo(title, message) received invalid arguments");
+    return nullptr;
+  }
+  return CreateBoolean(env, g_host && g_host->ShowInfo(title, message));
+}
+
+napi_value Confirm(napi_env env, napi_callback_info info) {
+  size_t count = 2;
+  napi_value arguments[2]{};
+  napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
+  std::string title;
+  std::string message;
+  if (count != 2 || !GetUtf8(env, arguments[0], &title) ||
+      !GetUtf8(env, arguments[1], &message)) {
+    ThrowLastError(env, "confirm(title, message) received invalid arguments");
+    return nullptr;
+  }
+  return CreateBoolean(env, g_host && g_host->Confirm(title, message));
+}
+
 napi_value Initialize(napi_env env, napi_value exports) {
   const napi_property_descriptor properties[] = {
       {"start", nullptr, Start, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -337,7 +365,9 @@ napi_value Initialize(napi_env env, napi_value exports) {
       {"openExternalUrl", nullptr, OpenExternalUrl, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"openPath", nullptr, OpenPath, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"completeTargetUrlSave", nullptr, CompleteTargetUrlSave, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"showInfo", nullptr, ShowInfo, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"showError", nullptr, ShowError, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"confirm", nullptr, Confirm, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
   napi_define_properties(env, exports, sizeof(properties) / sizeof(properties[0]), properties);
   return exports;

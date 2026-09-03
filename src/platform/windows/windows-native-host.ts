@@ -49,7 +49,9 @@ interface NativeAddon {
   openExternalUrl(url: string): boolean;
   openPath(path: string): boolean;
   completeTargetUrlSave(ok: boolean, message: string): void;
+  showInfo(title: string, message: string): void;
   showError(title: string, message: string): void;
+  confirm(title: string, message: string): boolean;
   registerShortcut(shortcut: string): ShortcutRegistrationResult;
   setAutoStart(enabled: boolean, executablePath: string, argumentsText: string): boolean;
 }
@@ -130,8 +132,16 @@ export class WindowsNativeHost implements PlatformHost {
     this.addon.completeTargetUrlSave(ok, message);
   }
 
+  showInfo(title: string, message: string): void {
+    this.addon.showInfo(title, message);
+  }
+
   showError(title: string, message: string): void {
     this.addon.showError(title, message);
+  }
+
+  confirm(title: string, message: string): boolean {
+    return this.addon.confirm(title, message);
   }
 
   registerShortcut(shortcut: string): ShortcutRegistrationResult {
@@ -172,6 +182,7 @@ function toPlatformEvent(type: string, value?: string): PlatformEvent | undefine
     case 'open-config-file':
     case 'open-config-directory':
     case 'reload-config':
+    case 'check-for-updates':
     case 'remove-custom-shortcut':
     case 'exit':
       return { type };

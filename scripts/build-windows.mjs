@@ -83,6 +83,7 @@ await build({
   define: {
     'import.meta.url': '__filename',
     'process.env.SELECT_BRIDGE_PACKAGED': '"1"',
+    'process.env.SELECT_BRIDGE_APP_VERSION': JSON.stringify(version),
   },
   banner: { js: '// SelectBridge — bundled for Node.js SEA' },
 });

@@ -24,6 +24,13 @@ interface UiMessages {
   saveConfigFailed: string;
   saveLanguageFailedTitle: string;
   saveLanguageFailed: string;
+  updateCheckTitle: string;
+  updateAvailable: string;
+  upToDate: string;
+  updateCheckFailedTitle: string;
+  updateCheckFailed: string;
+  openReleaseFailedTitle: string;
+  openReleaseFailed: string;
   detailsLabel: string;
 }
 
@@ -52,6 +59,14 @@ const MESSAGES: Record<UiLanguage, UiMessages> = {
     saveConfigFailed: 'SelectBridge could not save the configuration file.',
     saveLanguageFailedTitle: 'Could not change interface language',
     saveLanguageFailed: 'SelectBridge could not save the interface language.',
+    updateCheckTitle: 'Check for updates',
+    updateAvailable:
+      'A new version is available.\n\nCurrent version: {current}\nLatest version: {latest}\n\nOpen GitHub Releases?',
+    upToDate: 'SelectBridge is up to date.\n\nCurrent version: {current}',
+    updateCheckFailedTitle: 'Could not check for updates',
+    updateCheckFailed: 'SelectBridge could not check GitHub Releases for updates.',
+    openReleaseFailedTitle: 'Could not open download page',
+    openReleaseFailed: 'The system could not open GitHub Releases.',
     detailsLabel: 'Details',
   },
   'zh-CN': {
@@ -78,6 +93,14 @@ const MESSAGES: Record<UiLanguage, UiMessages> = {
     saveConfigFailed: 'SelectBridge 未能保存配置文件。',
     saveLanguageFailedTitle: '切换界面语言失败',
     saveLanguageFailed: 'SelectBridge 未能保存界面语言。',
+    updateCheckTitle: '检查更新',
+    updateAvailable:
+      '发现新版本。\n\n当前版本：{current}\n最新版本：{latest}\n\n是否打开 GitHub Releases？',
+    upToDate: 'SelectBridge 已是最新版本。\n\n当前版本：{current}',
+    updateCheckFailedTitle: '检查更新失败',
+    updateCheckFailed: 'SelectBridge 未能从 GitHub Releases 检查更新。',
+    openReleaseFailedTitle: '打开下载页面失败',
+    openReleaseFailed: '系统未能打开 GitHub Releases。',
     detailsLabel: '详细信息',
   },
 };
