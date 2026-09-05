@@ -1,6 +1,6 @@
 {
   "name": "select-bridge",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Forward globally selected text to a configurable URL target.",
   "main": "dist/index.js",
   "scripts": {

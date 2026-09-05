@@ -1122,9 +1122,11 @@ void Win32Host::ShowTrayMenu() {
   }
 
   AppendMenuW(menu,
-              MF_STRING | (enabled_ ? MF_CHECKED : MF_UNCHECKED),
+              MF_STRING,
               kCommandToggleEnabled,
-              LocalizedString(IDS_MENU_ENABLE_SELECTION_FORWARDING).c_str());
+              LocalizedString(enabled_ ? IDS_MENU_PAUSE_FORWARDING
+                                        : IDS_MENU_RESUME_FORWARDING)
+                  .c_str());
   AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
 
   const bool target_locked = !target_override_source_.empty();
@@ -1266,7 +1268,7 @@ void Win32Host::ShowTrayMenu() {
   AppendMenuW(settings_menu,
               MF_STRING | (auto_start_ ? MF_CHECKED : MF_UNCHECKED),
               kCommandToggleAutoStart,
-              LocalizedString(IDS_MENU_START_AT_SIGN_IN).c_str());
+              LocalizedString(IDS_MENU_START_WITH_WINDOWS).c_str());
   AppendMenuW(language_menu, MF_STRING, kCommandLanguageEnglish,
               LocalizedString(IDS_MENU_ENGLISH).c_str());
   AppendMenuW(language_menu, MF_STRING, kCommandLanguageSimplifiedChinese,

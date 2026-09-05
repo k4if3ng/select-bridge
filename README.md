@@ -1,38 +1,40 @@
-# SelectBridge
+<h1 align="center">
+  <img src="assets/icon.png" width="56" alt="" valign="middle">
+  <span> SelectBridge</span>
+</h1>
 
-English | [简体中文](README.zh-CN.md)
+<p align="center">
+  English | <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-Select text in a supported desktop application and forward it to a configurable URL target. The default target opens a [GoldenDict-ng](https://github.com/xiaoyifang/goldendict-ng) popup through `goldendict://`.
+<p align="center">
+  <img src="assets/usage.gif" alt="">
+</p>
 
-```text
-Selected text → SelectBridge → URL template → target application
-```
-
-SelectBridge does not provide dictionaries or translation services. Windows uses a lightweight native system-tray host; Windows, macOS, and Linux can run the headless host. The project does not depend on Electron, WebView, or Tauri.
+SelectBridge is a lightweight desktop utility that forwards text selected in supported desktop applications to a configurable URL target. It runs as a native tray application on Windows and as a headless host on Windows, macOS, and Linux. The default target opens a GoldenDict-ng popup through `goldendict://`.
 
 ## Features
 
-- Global text-selection monitoring through [`selection-hook`](https://github.com/0xfullex/selection-hook)
-- Immediate, modifier-key, or custom-shortcut forwarding
-- Windows-only floating icon and dot indicators with click or hover activation
-- GoldenDict-ng popup and custom URL templates
-- Compact Windows tray menu with native settings dialogs
-- English and Simplified Chinese Windows UI
-- Windows Setup and Portable packages for x64 and ARM64
-- Duplicate, rapid-selection, and maximum-length protection
+- Forward globally selected text to a configurable URL target.
+- Monitor global selections through [selection-hook](https://github.com/0xfullex/selection-hook).
+- Support immediate, modifier-key, custom-shortcut, icon, and dot trigger modes.
+- Open a [GoldenDict-ng](https://github.com/xiaoyifang/goldendict-ng) popup or any custom URL template.
+- Provide a lightweight Windows native tray host and a cross-platform headless host.
+- Support Windows x64 and ARM64 Setup and Portable packages.
+- Protect against duplicate selections, rapid repeats, and overlong text.
+
+SelectBridge does not provide dictionaries or translation services. It forwards selected text to the target application or service you configure.
 
 ## Install
 
 ### Scoop
-
-Add the `hoarfrost` bucket and install SelectBridge:
 
 ```powershell
 scoop bucket add hoarfrost https://github.com/k4if3ng/hoarfrost
 scoop install hoarfrost/select-bridge
 ```
 
-The Scoop manifest supports Windows x64 and ARM64 packages. Future stable releases can be installed with:
+Update an existing Scoop installation with:
 
 ```powershell
 scoop update select-bridge
@@ -40,79 +42,25 @@ scoop update select-bridge
 
 ### Windows packages
 
-Download the package for your architecture from [GitHub Releases](../../releases/latest):
-
-| Package | Description |
-| --- | --- |
-| `SelectBridge-<version>-windows-<arch>-setup.exe` | Per-user installer with Start menu and uninstall entries |
-| `SelectBridge-<version>-windows-<arch>-portable.zip` | Portable directory; extract and run without installation |
-
-`<arch>` is `x64` or `arm64`. Keep every file in the Portable directory together; moving only `SelectBridge.exe` will break the application.
-
-Install and start GoldenDict-ng at least once before using the default target so that Windows registers the `goldendict://` protocol.
+Download the package for your architecture from [GitHub Releases](../../releases/latest)
 
 ## Usage
 
 1. Start SelectBridge.
-2. Select text in a supported application.
+2. Select text in a supported desktop application.
 3. SelectBridge forwards the text according to the configured trigger mode.
 
-The default `immediate` mode forwards automatically. Modifier and custom-shortcut modes wait for `Ctrl`, `Alt`, `Shift`, or a configured key combination. The Windows native host also provides floating `icon` and `dot` modes with click or hover activation.
+The default `immediate` mode forwards automatically. Modifier and custom-shortcut modes wait for the configured key combination. Windows native mode also supports floating `icon` and `dot` indicators with click or hover activation.
 
 ## Windows tray settings
 
-Left-clicking or right-clicking the tray icon opens the same context menu:
+![](assets/tray.png)
 
-```text
-Enable selection forwarding
-───────────────────────────
-Lookup target >
-Trigger mode >
-Indicator settings >
-Settings >
-───────────────────────────
-Exit
-```
+The tray icon opens the same menu with either a left or right click. The first item changes between **Pause forwarding** and **Resume forwarding** according to the current state. Use the menu to select the lookup target, trigger mode, indicator size and activation, language, startup behavior, update checks, and configuration actions.
 
-The submenus include:
+For the complete Windows behavior and troubleshooting details, see [Windows implementation](docs/WINDOWS.md).
 
-```text
-Lookup target >
-  GoldenDict-ng Popup
-  Custom URL
-  Set URL template…
-
-Trigger mode >
-  Forward immediately
-  Show icon / Show dot
-  Hold Ctrl / Alt / Shift to forward
-  Custom shortcut
-  Set custom shortcut…
-
-Indicator settings >
-  Activation > Click / Hover
-  Icon size >
-  Dot size >
-
-Settings >
-  Start at sign-in
-  Language > English / 简体中文
-  Check for updates…
-  Open config file
-  Open config folder
-  Reload configuration
-```
-
-Settings are saved automatically. English (`en-US`) is the default and fallback UI language. On the first run, a Simplified Chinese system initializes `zh-CN`; other systems initialize `en-US`. The chosen value is then persisted and no longer follows later operating-system language changes.
-
-Language changes take effect immediately in the tray menu and any open settings dialog. The supported languages are:
-
-- English (`en-US`)
-- 简体中文 (`zh-CN`)
-
-Select **Settings → Check for updates…** to compare the installed version with the latest stable GitHub Release. If a newer version is available, SelectBridge can open the official download page; it never downloads or installs updates automatically.
-
-## URL templates
+## Custom URL templates
 
 Open **Lookup target → Set URL template…** to configure another application or service. A template must:
 
@@ -121,9 +69,9 @@ Open **Lookup target → Set URL template…** to configure another application 
 - contain no whitespace or control characters;
 - be no longer than 2,048 characters.
 
-Selected text replaces `{text}` after `encodeURIComponent` encoding. Saving a valid template immediately selects **Custom URL**. Switching back to GoldenDict-ng does not delete the saved template.
+Selected text replaces `{text}` after `encodeURIComponent` encoding. Saving a valid template immediately selects **Custom URL**.
 
-## Configuration
+## Configuration and updates
 
 Configuration paths:
 
@@ -131,16 +79,7 @@ Configuration paths:
 - Portable: `<portable-directory>\data\config.json`
 - Other platforms: `$XDG_CONFIG_HOME/select-bridge/config.json` or `~/.config/select-bridge/config.json`
 
-Use `SELECT_BRIDGE_CONFIG` to select another configuration path. Interface language is stored in configuration schema 10:
-
-```json
-{
-  "schemaVersion": 10,
-  "uiLanguage": "en-US"
-}
-```
-
-Existing configurations without `uiLanguage` are upgraded once using the current system language. Invalid language values fall back to `en-US`.
+Use `SELECT_BRIDGE_CONFIG` to select another configuration path. Select **Settings → Check for updates…** to compare the installed version with the latest stable GitHub Release. SelectBridge never downloads or installs updates automatically.
 
 ## Development
 
@@ -159,6 +98,14 @@ Technical documentation:
 - [Headless host](docs/HEADLESS.md)
 - [Development](docs/DEVELOPMENT.md)
 - [Windows implementation](docs/WINDOWS.md)
+
+## Open-source acknowledgements
+
+Global text-selection monitoring is powered by [selection-hook](https://github.com/0xfullex/selection-hook). The default lookup experience works with [GoldenDict-ng](https://github.com/xiaoyifang/goldendict-ng) through its `goldendict://` protocol. Thanks to these projects and their maintainers for making SelectBridge possible.
+
+## Links
+
+- [LINUX DO](https://linux.do/) — A community for developers and technology enthusiasts.
 
 ## License
 
