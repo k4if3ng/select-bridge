@@ -4,7 +4,7 @@ LANGUAGE 0x09, 0x01
 
 STRINGTABLE
 BEGIN
-  IDS_MENU_ENABLE_SELECTION_FORWARDING "Enable selection forwarding"
+  IDS_MENU_PAUSE_FORWARDING "Pause forwarding"
   IDS_MENU_CUSTOM_URL "Custom URL"
   IDS_MENU_SET_URL_TEMPLATE "Set URL template…"
   IDS_MENU_LOOKUP_TARGET_OVERRIDE "Lookup target (runtime override)"
@@ -26,7 +26,7 @@ BEGIN
   IDS_MENU_ICON_SIZE "Icon size"
   IDS_MENU_DOT_SIZE "Dot size"
   IDS_MENU_INDICATOR_SETTINGS "Indicator settings"
-  IDS_MENU_START_AT_SIGN_IN "Start at sign-in"
+  IDS_MENU_START_WITH_WINDOWS "Launch at startup"
   IDS_MENU_LANGUAGE "Language"
   IDS_MENU_ENGLISH "English"
   IDS_MENU_SIMPLIFIED_CHINESE "简体中文"
@@ -36,6 +36,7 @@ BEGIN
   IDS_MENU_SETTINGS "Settings"
   IDS_MENU_EXIT "Exit"
   IDS_MENU_CHECK_FOR_UPDATES "Check for updates…"
+  IDS_MENU_RESUME_FORWARDING "Resume forwarding"
 
   IDS_SHORTCUT_TITLE "Set custom shortcut"
   IDS_SHORTCUT_INSTRUCTIONS "Press a new key combination, then select “Save”."

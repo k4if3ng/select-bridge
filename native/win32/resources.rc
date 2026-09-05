@@ -2,5 +2,8 @@
 
 IDI_SELECT_BRIDGE ICON "..\\..\\resources\\icon.ico"
 
+#pragma code_page(65001)
 #include "strings\\en-US.rc"
+
+#pragma code_page(65001)
 #include "strings\\zh-CN.rc"

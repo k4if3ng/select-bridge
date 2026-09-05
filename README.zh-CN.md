@@ -1,38 +1,40 @@
-# SelectBridge
+<h1 align="center">
+  <img src="assets/icon.png" width="56" alt="" valign="middle">
+  <span> SelectBridge</span>
+</h1>
 
-[English](README.md) | 简体中文
+<p align="center">
+  <a href="README.md">English</a> | 简体中文
+</p>
 
-在受支持的桌面应用中选中文字，并将其转发到可配置的 URL 目标。默认目标通过 `goldendict://` 打开 [GoldenDict-ng](https://github.com/xiaoyifang/goldendict-ng) 查询弹窗。
+<p align="center">
+  <img src="assets/usage.gif" alt="">
+</p>
 
-```text
-选中文字 → SelectBridge → URL 模板 → 目标应用
-```
-
-SelectBridge 本身不提供词典或翻译服务。Windows 默认使用轻量原生系统托盘宿主；Windows、macOS 和 Linux 也可以运行 headless 宿主。项目不依赖 Electron、WebView 或 Tauri。
+SelectBridge 是一个轻量的桌面工具，可将受支持的桌面应用中选中的文字转发到可配置的 URL 目标。Windows 使用原生系统托盘应用，Windows、macOS 和 Linux 也支持 headless 宿主。默认目标通过 `goldendict://` 打开 GoldenDict-ng 查询弹窗。
 
 ## 功能
 
-- 通过 [`selection-hook`](https://github.com/0xfullex/selection-hook) 监听全局文本选区
-- 支持立即、修饰键或自定义快捷键转发
-- Windows 支持点击或悬浮触发的浮动图标和圆点
-- 支持 GoldenDict-ng Popup 和自定义 URL 模板
-- 提供紧凑的 Windows 托盘菜单和原生设置窗口
-- Windows UI 支持 English 和简体中文
-- Windows Setup 和 Portable 包均支持 x64 与 ARM64
-- 对重复选区、快速连续选区和过长文本进行保护
+- 将全局选中的文字转发到可配置的 URL 目标。
+- 通过 [selection-hook](https://github.com/0xfullex/selection-hook) 监听全局文本选区。
+- 支持立即、修饰键、自定义快捷键、图标和圆点触发方式。
+- 支持打开 [GoldenDict-ng](https://github.com/xiaoyifang/goldendict-ng) 查询弹窗或任意自定义 URL 模板。
+- 提供轻量的 Windows 原生托盘宿主和跨平台 headless 宿主。
+- Windows x64 与 ARM64 均提供 Setup 和 Portable 包。
+- 防止重复选区、快速连续触发和过长文本。
+
+SelectBridge 本身不提供词典或翻译服务，只会将选中文本转发到你配置的目标应用或服务。
 
 ## 安装
 
 ### Scoop
-
-添加 `hoarfrost` bucket 并安装 SelectBridge：
 
 ```powershell
 scoop bucket add hoarfrost https://github.com/k4if3ng/hoarfrost
 scoop install hoarfrost/select-bridge
 ```
 
-Scoop manifest 支持 Windows x64 和 ARM64 包。后续稳定版本可以通过以下命令安装：
+更新已有的 Scoop 安装：
 
 ```powershell
 scoop update select-bridge
@@ -40,79 +42,25 @@ scoop update select-bridge
 
 ### Windows 发布包
 
-从 [GitHub Releases](../../releases/latest) 下载与系统架构匹配的包：
-
-| 包 | 说明 |
-| --- | --- |
-| `SelectBridge-<version>-windows-<arch>-setup.exe` | 当前用户安装，包含开始菜单和卸载入口 |
-| `SelectBridge-<version>-windows-<arch>-portable.zip` | 解压后运行，可整体移动 |
-
-`<arch>` 为 `x64` 或 `arm64`。Portable 目录中的文件必须一起保留，只移动 `SelectBridge.exe` 会导致程序无法运行。
-
-使用默认目标前，请至少启动一次 GoldenDict-ng，让 Windows 注册 `goldendict://` 协议。
+从 [GitHub Releases](../../releases/latest) 下载与系统架构匹配的包
 
 ## 使用
 
-1. 启动 SelectBridge；
-2. 在受支持的应用中选中文字；
+1. 启动 SelectBridge。
+2. 在受支持的桌面应用中选中文字。
 3. SelectBridge 根据当前触发方式转发文本。
 
-默认 `immediate` 模式会自动转发；修饰键和自定义快捷键模式等待 `Ctrl`、`Alt`、`Shift` 或配置的组合键。Windows native 宿主还提供支持点击或悬浮触发的 `icon` 和 `dot` 模式。
+默认 `immediate` 模式会自动转发；修饰键和自定义快捷键模式等待配置的组合键。Windows native 模式还支持可点击或悬浮触发的 `icon` 和 `dot` 指示器。
 
 ## Windows 托盘设置
 
-左键或右键点击托盘图标会打开同一个上下文菜单：
+![](assets/tray.png)
 
-```text
-启用选词转发
-────────────
-查询目标 >
-触发方式 >
-指示器设置 >
-设置 >
-────────────
-退出
-```
+左键或右键点击托盘图标都会打开同一个菜单。菜单第一项会根据当前状态在“暂停转发”和“恢复转发”之间切换。菜单还可用于选择查询目标、触发方式、指示器大小和触发动作、界面语言、开机启动、更新检查及配置操作。
 
-子菜单包括：
+完整的 Windows 行为说明和排障信息见 [Windows 实现](docs/WINDOWS.md)。
 
-```text
-查询目标 >
-  GoldenDict-ng Popup
-  自定义 URL
-  设置 URL 模板…
-
-触发方式 >
-  立即转发
-  显示图标 / 显示圆点
-  按 Ctrl / Alt / Shift 转发
-  自定义快捷键
-  设置自定义快捷键…
-
-指示器设置 >
-  触发动作 > 点击 / 悬浮
-  图标大小 >
-  圆点大小 >
-
-设置 >
-  登录时自动启动
-  语言 > English / 简体中文
-  检查更新…
-  打开配置文件
-  打开配置目录
-  重新加载配置
-```
-
-设置会自动保存。English（`en-US`）是默认和回退界面语言；首次运行时，简体中文系统初始化为 `zh-CN`，其他系统初始化为 `en-US`。此后使用已保存的值，不再跟随操作系统语言变化。
-
-语言切换会立即应用到托盘菜单和当前已打开的设置窗口。支持：
-
-- English（`en-US`）
-- 简体中文（`zh-CN`）
-
-通过“设置 → 检查更新…”将当前安装版本与 GitHub 最新稳定版进行比较。发现新版本时，SelectBridge 可以打开官方下载页面，但不会自动下载或安装更新。
-
-## URL 模板
+## 自定义 URL 模板
 
 通过“查询目标 → 设置 URL 模板…”配置其他应用或服务。模板必须：
 
@@ -121,9 +69,9 @@ scoop update select-bridge
 - 不包含空白或控制字符；
 - 不超过 2048 个字符。
 
-选中文本经过 `encodeURIComponent` 编码后替换 `{text}`。保存有效模板后会立即选中“自定义 URL”；切回 GoldenDict-ng 不会删除模板。
+选中文本经过 `encodeURIComponent` 编码后替换 `{text}`。保存有效模板后会立即选中“自定义 URL”。
 
-## 配置
+## 配置和更新
 
 配置文件位置：
 
@@ -131,16 +79,7 @@ scoop update select-bridge
 - Portable：`<便携目录>\data\config.json`
 - 其他平台：`$XDG_CONFIG_HOME/select-bridge/config.json` 或 `~/.config/select-bridge/config.json`
 
-可通过 `SELECT_BRIDGE_CONFIG` 指定其他配置路径。界面语言保存在配置 schema 10 中：
-
-```json
-{
-  "schemaVersion": 10,
-  "uiLanguage": "en-US"
-}
-```
-
-缺少 `uiLanguage` 的旧配置会根据当前系统语言执行一次升级；非法语言值回退到 `en-US`。
+可通过 `SELECT_BRIDGE_CONFIG` 指定其他配置路径。通过“设置 → 检查更新…”将当前安装版本与 GitHub 最新稳定版进行比较。SelectBridge 不会自动下载或安装更新。
 
 ## 开发
 
@@ -159,6 +98,14 @@ pnpm test
 - [Headless 宿主](docs/HEADLESS.md)
 - [开发说明](docs/DEVELOPMENT.md)
 - [Windows 实现](docs/WINDOWS.md)
+
+## 开源致谢
+
+全局文本选区监听由 [selection-hook](https://github.com/0xfullex/selection-hook) 提供，默认查询体验则通过 [GoldenDict-ng](https://github.com/xiaoyifang/goldendict-ng) 的 `goldendict://` 协议实现。感谢这些项目及其维护者，让 SelectBridge 得以成为现实。
+
+## 友情链接
+
+- [LINUX DO](https://linux.do/) — 开发者与技术爱好者社区。
 
 ## 许可证
 
