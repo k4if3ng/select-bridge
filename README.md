@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/usage.gif" alt="">
+  <img src="assets/usage.gif" width=70% alt="">
 </p>
 
 SelectBridge is a lightweight desktop utility that forwards text selected in supported desktop applications to a configurable URL target. It runs as a native tray application on Windows and as a headless host on Windows, macOS, and Linux. The default target opens a GoldenDict-ng popup through `goldendict://`.

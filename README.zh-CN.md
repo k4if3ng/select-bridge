@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/usage.gif" alt="">
+  <img src="assets/usage.gif" width=70% alt="">
 </p>
 
 SelectBridge 是一个轻量的桌面工具，可将受支持的桌面应用中选中的文字转发到可配置的 URL 目标。Windows 使用原生系统托盘应用，Windows、macOS 和 Linux 也支持 headless 宿主。默认目标通过 `goldendict://` 打开 GoldenDict-ng 查询弹窗。
