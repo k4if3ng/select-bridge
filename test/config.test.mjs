@@ -43,13 +43,14 @@ test('serializes concurrent config saves and leaves valid JSON', async () => {
 
   try {
     const first = { ...DEFAULT_CONFIG, enabled: false };
-    const second = { ...DEFAULT_CONFIG, enabled: true };
+    const second = { ...DEFAULT_CONFIG, enabled: true, enableClipboardFallback: false };
     await Promise.all([store.save(first), store.save(second)]);
     await store.flush();
 
     const saved = JSON.parse(await readFile(path, 'utf8'));
     assert.equal(saved.enabled, true);
-    assert.equal(saved.schemaVersion, 10);
+    assert.equal(saved.schemaVersion, 11);
+    assert.equal(saved.enableClipboardFallback, false);
     assert.equal(saved.targetMode, 'goldendict');
     assert.equal(saved.customTargetUrlTemplate, '');
   } finally {
@@ -65,12 +66,14 @@ test('migrates schema 8 target URL settings', async () => {
     await writeFile(path, JSON.stringify({
       ...DEFAULT_CONFIG,
       schemaVersion: 8,
+      enableClipboardFallback: undefined,
       targetMode: undefined,
       customTargetUrlTemplate: undefined,
       targetUrlTemplate: 'youdao://query?word={text}',
     }));
     const migrated = await store.readPersistent();
-    assert.equal(migrated.schemaVersion, 10);
+    assert.equal(migrated.schemaVersion, 11);
+    assert.equal(migrated.enableClipboardFallback, true);
     assert.equal(migrated.targetMode, 'custom');
     assert.equal(migrated.customTargetUrlTemplate, 'youdao://query?word={text}');
     assert.equal('targetUrlTemplate' in migrated, false);
@@ -98,7 +101,7 @@ test('persists the system language when upgrading a config without uiLanguage', 
     const saved = JSON.parse(await readFile(path, 'utf8'));
     assert.equal(migrated.uiLanguage, 'zh-CN');
     assert.equal(saved.uiLanguage, 'zh-CN');
-    assert.equal(saved.schemaVersion, 10);
+    assert.equal(saved.schemaVersion, 11);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

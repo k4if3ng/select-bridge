@@ -119,6 +119,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
@@ -143,10 +148,31 @@ jobs:
             sha256sum *.exe *.zip | sort -k2 > SHA256SUMS.txt
           )
 
+      - name: Generate changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_tag="$(git describe --tags --abbrev=0 "${GITHUB_SHA}^" 2>/dev/null || true)"
+
+          if [ -n "$previous_tag" ]; then
+            changelog_range="${previous_tag}..${GITHUB_SHA}"
+          else
+            changelog_range="${GITHUB_SHA}"
+          fi
+
+          {
+            echo '## Changelog'
+            echo
+            git log --reverse \
+              --pretty=format:"- %s ([%h](https://github.com/${GITHUB_REPOSITORY}/commit/%H))" \
+              "$changelog_range"
+            echo
+          } > release-notes.md
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: release-notes.md
           files: |
             release/*.exe
             release/*.zip
