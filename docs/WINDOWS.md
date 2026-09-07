@@ -1,190 +1,95 @@
-# Windows
+# Windows 指南
 
-## 功能
+Windows 默认使用原生托盘宿主，提供托盘菜单、悬浮指示器、全局快捷键、开机启动和配置入口。也可以显式使用不带托盘界面的 [Headless 宿主](HEADLESS.md)。
 
-Windows 平台层提供：
+## 安装与配置
 
-- 系统托盘和菜单；
-- 无激活悬浮图标或圆点；
-- 点击和 hover 触发；
-- 自定义全局快捷键及冲突检测；
-- 查询目标子菜单和自定义 URL 原生编辑窗口；
-- 当前用户开机启动；
-- 无控制台的托盘版主程序。
+发布包支持 Windows x64 和 ARM64：
 
-这些能力由 `native/win32/` 中的纯 Node-API/Win32 模块实现，native 宿主启动时必须加载该模块。
+- Setup 安装版将程序安装到当前用户目录，并创建开始菜单和卸载入口；
+- Portable 压缩包解压后即可使用，配置保存在同目录的 `data/config.json`；
+- 安装版配置位于 `%APPDATA%\select-bridge\config.json`。
 
-Windows 默认使用完整 native 宿主，也可以通过 `--host=headless` 或 `--headless` 显式使用跨平台 `HeadlessHost`。native 模块加载失败时直接终止，不会隐式切换模式。
+Portable 目录可以整体移动，但不要只移动其中的 EXE。移动后如需开机启动，请重新关闭并开启一次“开机自启”，以更新程序路径。
 
-Windows headless 的通用能力和排障见 [`HEADLESS.md`](HEADLESS.md)；本文其余部分主要描述 Windows native 宿主。
+## 托盘菜单
 
-## 环境
+左键或右键点击托盘图标都会打开同一个菜单，主要包括：
 
-- Windows SDK
-- Visual Studio/Build Tools C++ 桌面开发组件
-- Python 3，且 `python` 位于环境 `PATH`
-- Node.js 18+；SEA 打包要求 Node.js 24+，并且架构需与目标包一致（x64 或 ARM64）
+- 暂停或恢复转发；
+- 选择查询目标；
+- 选择触发方式；
+- 调整指示器样式和触发动作；
+- 设置开机启动、剪贴板回退和界面语言；
+- 检查更新、打开或重新加载配置。
 
-`native/win32/` 中的 C++ 源文件统一使用 UTF-8 编码，`binding.gyp` 通过 MSVC 的 `/utf-8` 选项固定源字符集和执行字符集。修改原生 UI 文案后，请在 Windows 环境重新构建并检查托盘菜单、快捷键设置窗口、URL 设置窗口和状态提示中的中文显示。
+“暂停转发”会停止全局选区钩子，不再监听鼠标选区和键盘事件；“恢复转发”会重新启动钩子。恢复失败时保持暂停并显示错误。
 
-可在构建前确认当前环境中的 Python：
+## 触发方式
 
-```powershell
-python --version
-```
-
-## 命令
-
-```powershell
-# 编译 Win32 Node-API 模块
-pnpm build:native
-
-# 只检查原生导出，不创建窗口
-pnpm check:native
-
-# 启动托盘开发模式
-pnpm start -- --host=native
-
-# 启动 Windows 无界面模式
-pnpm start -- --host=headless
-
-# 生成 Windows x64 或 ARM64 发布目录
-pnpm build:windows
-
-# 只生成 Portable ZIP
-pnpm build:windows:portable
-
-# 从已有基础运行目录生成 Setup EXE
-pnpm build:windows:setup
-```
-
-Windows 上的 `pnpm start` 默认等价于 `--host=native`，会启动真实托盘、全局选区钩子和系统快捷键。headless 仍会启动真实全局选区钩子，但不加载 Win32 UI 模块、不创建托盘，也不使用 `RegisterHotKey`。仅在需要交互验证时运行。
-
-## 原生结构
-
-| 文件 | 职责 |
+| 方式 | 行为 |
 | --- | --- |
-| `native/win32/src/addon.cc` | Node-API 参数校验、导出和宿主生命周期 |
-| `native/win32/src/win32_host.*` | 消息线程、托盘、窗口、快捷键和注册表 |
-| `native/win32/resources.rc` | 编译默认图标 |
-| `resources/windows.manifest` | SEA 主程序权限、兼容性和系统控件视觉样式 |
-| `native/win32/binding.gyp` | node-gyp 源文件、编译选项和系统库 |
-| `src/platform/windows/windows-native-host.ts` | TypeScript 平台适配器 |
+| 立即转发 | 选区稳定后自动转发 |
+| 显示图标 / 圆点 | 在选区附近显示指示器，通过点击或悬浮确认 |
+| 单按 Ctrl / Alt / Shift | 选中后单独按下并释放对应修饰键 |
+| 自定义快捷键 | 使用已注册的全局组合键确认 |
 
-线程关系：
+单按修饰键模式不会响应组合键：按住修饰键期间只要出现其他按键，本次触发就会取消，因此 `Ctrl+C`、`Alt+Tab`、`Shift+字母` 等正常组合不会转发选区。
 
-```text
-Node thread ── PostMessage/SendMessage ── Win32 UI thread
-Node thread ◀─ napi_threadsafe_function ─ Win32 UI thread
-```
+自定义快捷键至少包含一个修饰键和一个普通键。Windows 会检查组合是否已被其他程序占用；冲突或无效的候选不会替换当前快捷键。移除正在使用的自定义快捷键后，触发方式切换为立即转发。
 
-Win32 UI 线程不能直接调用 JS。窗口必须在创建它的线程销毁；退出时清理计时器、热键、托盘、窗口、图标和线程句柄。
+## 剪贴板回退
 
-## 指示器
+“设置 → 剪贴板回退”默认开启，对应配置项 `enableClipboardFallback: true`。SelectBridge 会优先通过 Windows 无障碍接口读取选中文字；只有这些方式没有返回文字时，才允许 `selection-hook` 发送模拟 `Ctrl+C` 并尝试读取剪贴板。
 
-- 使用 `WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST`，不抢夺焦点；
-- 坐标优先使用选区末端，其次鼠标末端，最后当前鼠标位置；
-- 点击触发和 hover 触发互斥，由托盘子菜单选择；
-- 悬浮控件使用 `WS_EX_LAYERED` 和 `UpdateLayeredWindow` 的 per-pixel alpha，不交给 DWM 绘制圆角或阴影；图标模式绘制抗锯齿圆角、白色底板、2px 灰蓝边框和内缩图标，圆点模式只绘制抗锯齿蓝色圆点；
-- 图标大小可选 `24/28/32/36/40 px`，默认 `32 px`；圆点大小可选 `12/16/20/24/28 px`，默认 `16 px`；
-- 窗口销毁时释放对应 `HICON`。
+剪贴板回退能提高部分应用的兼容性，但可能影响前台程序或改变剪贴板内容。终端出现 `^C`、命令被中断或应用发生意外复制时，可以关闭该选项。设置会立即应用并持久保存；详细原因和影响见[常见问题](#常见问题)。
 
-默认图标是 `resources/icon.ico`，同时用于托盘、悬浮图标和 SEA 主 EXE。
+## 查询目标与配置
 
-## 快捷键
+“查询目标”可以选择 GoldenDict-ng Popup 或已保存的自定义 URL。自定义模板必须：
 
-自定义快捷键至少包含一个修饰键和一个普通键。系统占用检测以实际 `RegisterHotKey` 结果为准；退出或离开 custom 模式时调用 `UnregisterHotKey`。
+- 使用合法 URI scheme；
+- 恰好包含一个 `{text}`；
+- 不包含空白或控制字符；
+- 不超过 2048 个字符。
 
-- 捕获窗口使用普通系统标题栏和标准 `STATIC/EDIT/BUTTON` 控件；快捷键捕获控件保留自定义按键捕获逻辑，并根据字体和 DPI 在加高边框内垂直居中；
-- 输入完整组合后先用独立的探测 ID 检查占用，保存时再次检查并正式注册，预览阶段不会替换当前快捷键；
-- 冲突、无效组合和注册异常使用行内状态提示，不再创建额外警告弹窗；
-- 裸 `Esc/Enter/Tab` 分别用于取消、保存和控件导航，带修饰键时仍作为快捷键候选；
-- 移除已保存快捷键时注销系统热键；当前使用 custom 触发时同时切换到 immediate；
-- 从设置入口保存只更新快捷键，从未设置的 custom 触发入口保存会同时启用 custom；
-- 全新配置仍预置 `Ctrl+Alt+G`，用户主动移除后以空字符串保存，不自动恢复默认值；
-- 弹窗在当前鼠标所在显示器的工作区居中，不保存窗口位置。
+选中文字会经过 `encodeURIComponent` 编码后替换 `{text}`。存在命令行或环境变量 URL 覆盖时，托盘中的目标选择和编辑入口会显示为受运行参数控制。
 
-## 查询目标和配置入口
+配置可以从托盘直接打开、打开所在目录或重新加载。无效配置不会替换当前运行状态。
 
-- 托盘图标左键与右键显示同一个上下文菜单；双击消息不另外执行动作；
-- 托盘顶层菜单按“查询目标、触发方式、指示器设置、设置”分组；自定义快捷键入口属于触发方式，触发动作与两种尺寸属于指示器设置，启动与配置文件维护属于设置；
-- “查询目标”使用单选项在 `GoldenDict-ng Popup` 与已保存的自定义 URL 之间切换；自定义模板为空或无效时该单选项禁用，“设置 URL 模板…”负责打开编辑窗口；
-- URL 编辑窗口与快捷键设置窗口是非模态、互斥的单实例设置窗口：同类型重复打开时激活现有窗口，不同类型打开时销毁并替换当前窗口；普通失活、切换应用或打开托盘菜单不会自动关闭；
-- 不同窗口互相替换时直接丢弃尚未保存的 URL 或快捷键捕获状态，不弹确认；URL 正在异步保存时暂不允许替换，快捷键注册的同步临界区天然不会接受新的托盘命令；
-- 快捷键捕获文本水平、垂直居中；URL 文本左对齐、垂直居中。两者都根据当前字体和 DPI 计算内部文本区域，不使用固定像素偏移；
-- URL 保存由 Win32 UI 发往 TypeScript，TypeScript 完成校验和原子持久化后再回传结果；失败时窗口保持打开并显示错误，成功后关闭并立即启用自定义目标；
-- URL 模板允许任意合法 URI scheme，必须且只能包含一个 `{text}`，不得包含空白/控制字符，最大 2048 个 UTF-16 code units；
-- `--target-url` 优先于 `SELECT_BRIDGE_TARGET_URL`，运行时覆盖优先于配置和默认值。存在覆盖时目标选项禁用，编辑窗口只读并提供复制入口；
-- “设置”子菜单在“开机自启”之后提供“语言”子菜单，并在配置维护入口之前保留分隔线；语言项固定使用自称 `English` 和 `简体中文`；
-- “检查更新…”位于“设置”子菜单，通过 TypeScript 异步查询 GitHub 最新稳定 Release；发现新版本时询问是否打开官方下载页，不自动下载或安装；
-- `en-US` 是默认和资源缺失时的回退语言。首次运行或升级缺少 `uiLanguage` 的旧配置时，系统首选 UI 语言属于简体中文语言族则选择 `zh-CN`，否则选择 `en-US`，解析结果只持久化一次；
-- 语言选择先原子保存，成功后通过 `kUpdateTrayMessage` 在 Win32 UI 线程切换。托盘菜单下次打开时使用新语言；当前设置窗口原地刷新标题、标签、按钮和状态，不丢弃 URL 输入、快捷键捕获或焦点；
-- native 文案分别位于 `native/win32/strings/en-US.rc` 与 `native/win32/strings/zh-CN.rc`，使用相同资源 ID 和带 `LANGUAGE` 的 `STRINGTABLE`；加载时按明确语言查找并回退到英文，不使用 `.resw`/PRI；
-- “设置”子菜单同时提供打开配置文件、打开配置目录和原子重新加载。重新加载失败时继续使用旧状态；
-- 托盘写入前严格重读磁盘 JSON，只合并本次改变的字段；无效 JSON 会阻止写入并显示错误。
+## 开机启动与单实例
 
-修改 JS/C++ 原生接口时同步检查：
+Setup 和 Portable 共用当前用户的开机启动入口，最后开启该选项的版本会接管启动路径。关闭时只移除指向自身的启动项。
 
-- `addon.cc` 的参数数量与顺序；
-- `Win32Host` 声明和实现；
-- `NativeAddon` TypeScript 接口；
-- `WindowsNativeHost` 调用；
-- `scripts/check-native.cjs`；
-- `binding.gyp` 中的源文件和系统库。
+同一用户同时只运行一个 SelectBridge 实例。后启动的 Setup、Portable 或开发实例会直接退出，避免安装多套全局选区钩子；不同分发方式仍各自使用自己的配置文件。
 
-## 开机启动
+## 更新
 
-开发态使用 Node 可执行文件、脚本路径和 `--silent`。发布态直接注册 `SelectBridge.exe --silent`；发布版 EXE 使用 Windows GUI 子系统，因此不会显示控制台。
+“设置 → 检查更新…”会将当前版本与 GitHub 最新稳定版比较。SelectBridge 不会自动下载或安装更新。
 
-```text
-SelectBridge.exe --silent
-```
+## FAQ
 
-Setup 与 Portable 共用一个开机启动值。最后启用开机启动的版本接管该值；任一版本关闭开机启动时，只删除指向自身可执行文件的值。Setup 卸载器也只清理指向安装目录的值，不影响 Portable 已登记的路径。
+### 为什么在终端选词时会出现 `^C`，甚至中断当前命令？
 
-## 单实例
+剪贴板回退默认开启。检测到文本选区后，`selection-hook` 会先尝试通过 UI Automation、IAccessible 等 Windows 无障碍接口读取文字；如果这些接口不受当前应用支持、读取失败或没有返回文字，剪贴板回退会作为最后一种取词方式向前台程序发送模拟 `Ctrl+C`，再尝试读取剪贴板。
 
-Windows 运行时使用按用户隔离的命名管道作为轻量单实例锁，不增加常驻进程或第三方运行库。Setup、Portable 和开发态使用同一个实例通道：
+在编辑器和浏览器中，`Ctrl+C` 通常只表示复制；在终端、Shell 和部分交互式程序中，它表示中断当前操作。因此可能出现：
 
-- 先启动的实例持有选区钩子及所选宿主；native 模式同时持有托盘；
-- 后启动的实例向现有实例报告自己的分发类型，然后以成功状态退出；
-- Setup 与 Portable 的配置文件继续分离，但不会同时监听选区；
-- 如果现有实例正在退出，新实例会短暂重试一次；通道存在但无响应时按单实例失败关闭，避免启动第二套全局钩子。
+- 命令行末尾出现 `^C`，例如 `clear^C`；
+- 当前命令或前台进程被中断；
+- 应用执行一次意外复制；
+- 系统剪贴板内容发生变化。
 
-## 发布包
+模拟 `Ctrl+C` 发生在“读取选区”阶段，而不是“确认转发”阶段。因此即使使用修饰键、自定义快捷键、图标或圆点触发，只要在终端中产生选区，回退仍可能先执行。退出 SelectBridge 或暂停转发会停止选区钩子，所以相同操作随后恢复正常。
 
-`pnpm build:windows` 会根据当前 Node.js 的 `process.arch` 生成对应架构的产物。支持 `x64` 和 `arm64`：
+遇到这种情况时，取消勾选“设置 → 剪贴板回退”即可。也可以将 `enableClipboardFallback` 改为 `false`，再从托盘重新加载配置。该选择会持久保存。
 
-```text
-release/
-├ SelectBridge-<version>-windows-<arch>-portable.zip
-└ SelectBridge-<version>-windows-<arch>-setup.exe
-```
+关闭后，UI Automation 和 IAccessible 等原生取词方式仍会工作；只有依赖模拟复制才能取词的应用可能无法再产生选区。如果要停止全部全局监听，请使用“暂停转发”。
 
-其中 `<arch>` 为 `x64` 或 `arm64`。GitHub Actions 使用 x64 和 ARM64 runner 分别构建两个架构；ARM64 构建必须使用 ARM64 Node.js、ARM64 native addon 和 `selection-hook` 的 `win32-arm64` 预编译模块；x86/ia32 不在当前支持范围内。
+### 关闭剪贴板回退后，为什么某些应用无法取词？
 
-主程序使用 Node SEA，并包含应用和 `selection-hook` 的 JavaScript 代码；两个原生 `.node` 文件保留在外部。主程序清单保留 `asInvoker`，并启用 Common Controls v6 系统视觉样式。
+这通常表示该应用没有通过受支持的无障碍接口公开选中文字，之前的结果来自剪贴板回退。可以重新开启回退以恢复兼容性，但在终端中选词时需留意模拟 `Ctrl+C` 的副作用。当前版本不支持按应用分别设置回退。
 
-v1.2.1 修复多语言资源编译的 UTF-8 代码页设置，避免 Unicode 标点出现乱码；托盘一级菜单改为根据当前状态显示“暂停转发”或“恢复转发”，不再使用勾选标记，并将开机启动菜单文案精简为“开机自启”。本版本同时重构中英文 README，加入演示素材、Scoop 安装方法、开源致谢和友情链接。
+### 为什么自定义快捷键提示冲突？
 
-v1.2.0 修复 Windows native UI 编码，新增 English/简体中文即时切换、托盘查询目标、自定义 URL 编辑入口与手动更新检查，加入 schema 10 配置迁移和严格重载，并为 x64/ARM64 Release 及 Pull Request CI 提供独立构建任务。
-
-v1.1.1 在 v1.1.0 的宿主模式解耦基础上优化运行时路径：缓存 headless 快捷键解析、避免重复隐藏指示器，并减少配置变更时的重复 native 状态同步。
-
-v1.1.0 将宿主模式与操作系统解耦：Windows 保留默认 native 托盘宿主，同时可显式使用跨平台 headless 宿主。
-
-v1.0.1 重点修复原生 UI 线程退出时的生命周期保护，并完善自定义快捷键捕获、移除和标准系统控件界面。
-
-- Portable ZIP 解压后包含三个运行文件和 `portable.flag`，配置写入同目录 `data/config.json`。整个目录可移动，单独移动 EXE 不可运行；移动后需要重新启用一次开机启动，以刷新注册表中的绝对路径。
-- Setup EXE 使用 Inno Setup 6，把同样三个运行文件安装到当前用户目录，创建开始菜单快捷方式和卸载项，配置继续使用 `%APPDATA%`。
-
-基础运行目录位于 `build/windows/app/`，仅供打包流水线使用，不作为最终分发物。
-
-## 常见问题
-
-- 找不到 Node：检查当前 PowerShell 的 Node/FNM PATH，不要把本机绝对路径写入脚本。
-- 找不到 Python：确认 `python` 可通过当前 PowerShell 的 `PATH` 直接调用。
-- `.node` 无法覆盖：确认是否被运行中的 Node 进程锁定，不要终止来源不明的进程。
-- 原生模块加载失败：确认 `select_bridge_win32_ui.node` 已构建，且 Node 与模块架构一致。
-- 快捷键冲突：查看 `RegisterHotKey` 返回的 Windows 错误码。
-- 没有 Setup EXE：安装 Inno Setup 6，或先使用 `pnpm build:windows:portable` 只生成便携包。
+Windows 全局快捷键不能与其他程序已经注册的组合重复。请换用其他组合；冲突的候选不会替换当前已生效的快捷键。

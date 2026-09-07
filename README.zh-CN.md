@@ -17,6 +17,7 @@ SelectBridge 是一个轻量的桌面工具，可将受支持的桌面应用中�
 
 - 将全局选中的文字转发到可配置的 URL 目标。
 - 通过 [selection-hook](https://github.com/0xfullex/selection-hook) 监听全局文本选区。
+- 支持暂停选区钩子，并从 Windows 托盘切换剪贴板回退。
 - 支持立即、修饰键、自定义快捷键、图标和圆点触发方式。
 - 支持打开 [GoldenDict-ng](https://github.com/xiaoyifang/goldendict-ng) 查询弹窗或任意自定义 URL 模板。
 - 提供轻量的 Windows 原生托盘宿主和跨平台 headless 宿主。
@@ -58,7 +59,7 @@ scoop update select-bridge
 
 左键或右键点击托盘图标都会打开同一个菜单。菜单第一项会根据当前状态在“暂停转发”和“恢复转发”之间切换。菜单还可用于选择查询目标、触发方式、指示器大小和触发动作、界面语言、开机启动、更新检查及配置操作。
 
-完整的 Windows 行为说明和排障信息见 [Windows 实现](docs/WINDOWS.md)。
+完整的 Windows 行为说明和排障信息见 [Windows 指南](docs/WINDOWS.md)。
 
 ## 自定义 URL 模板
 
@@ -79,7 +80,13 @@ scoop update select-bridge
 - Portable：`<便携目录>\data\config.json`
 - 其他平台：`$XDG_CONFIG_HOME/select-bridge/config.json` 或 `~/.config/select-bridge/config.json`
 
-可通过 `SELECT_BRIDGE_CONFIG` 指定其他配置路径。通过“设置 → 检查更新…”将当前安装版本与 GitHub 最新稳定版进行比较。SelectBridge 不会自动下载或安装更新。
+可通过 `SELECT_BRIDGE_CONFIG` 指定其他配置路径。配置项 `enableClipboardFallback` 控制 selection-hook 是否允许在原生无障碍接口无法取词时发送模拟复制快捷键，默认值为 `true` 以保持兼容性，也可从 Windows 托盘切换。通过“设置 → 检查更新…”将当前安装版本与 GitHub 最新稳定版进行比较。SelectBridge 不会自动下载或安装更新。
+
+## 常见问题
+
+### 为什么在终端选词时会出现 `^C`，甚至中断当前命令？
+
+剪贴板回退默认开启。当 Windows 无障碍接口无法读取选区时，它可能发送模拟 `Ctrl+C`；终端通常会把该组合解释为中断。取消勾选“设置 → 剪贴板回退”可以禁止模拟复制，但依赖剪贴板取词的应用可能不再产生选区。详细说明见 [Windows 常见问题](docs/WINDOWS.md#FAQ)。
 
 ## 开发
 
@@ -90,14 +97,15 @@ pnpm build:native
 pnpm test
 ```
 
-使用 `pnpm start -- --host=headless` 运行跨平台 headless 宿主。构建 Windows 原生宿主还需要与目标架构匹配的 Node.js、Windows SDK、Visual Studio C++ 工具，以及可通过 `python` 调用的 Python。
+环境准备、原生构建、测试和打包见[开发说明](docs/DEVELOPMENT.md)。
 
-技术文档：
+文档：
 
 - [架构](docs/ARCHITECTURE.md)
 - [Headless 宿主](docs/HEADLESS.md)
 - [开发说明](docs/DEVELOPMENT.md)
-- [Windows 实现](docs/WINDOWS.md)
+- [Windows 指南](docs/WINDOWS.md)
+- [更新记录](CHANGELOG.md)
 
 ## 开源致谢
 

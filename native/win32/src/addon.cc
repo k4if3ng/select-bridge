@@ -152,11 +152,12 @@ napi_value Stop(napi_env env, napi_callback_info) {
 }
 
 napi_value UpdateTray(napi_env env, napi_callback_info info) {
-  size_t count = 11;
-  napi_value arguments[11]{};
+  size_t count = 12;
+  napi_value arguments[12]{};
   napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
 
   bool enabled = true;
+  bool enable_clipboard_fallback = true;
   bool auto_start = false;
   std::string trigger_mode;
   std::string indicator_action;
@@ -167,17 +168,18 @@ napi_value UpdateTray(napi_env env, napi_callback_info info) {
   std::string custom_target_url;
   std::string target_override_source;
   std::string ui_language;
-  if (count != 11 || !GetBoolean(env, arguments[0], &enabled) ||
-      !GetUtf8(env, arguments[1], &trigger_mode) ||
-      !GetBoolean(env, arguments[2], &auto_start) ||
-      !GetUtf8(env, arguments[3], &indicator_action) ||
-      !GetInt32OrNull(env, arguments[4], &icon_size) ||
-      !GetInt32OrNull(env, arguments[5], &dot_size) ||
-      !GetUtf8(env, arguments[6], &custom_shortcut) ||
-      !GetUtf8(env, arguments[7], &target_mode) ||
-      !GetUtf8(env, arguments[8], &custom_target_url) ||
-      !GetUtf8(env, arguments[9], &target_override_source) ||
-      !GetUtf8(env, arguments[10], &ui_language)) {
+  if (count != 12 || !GetBoolean(env, arguments[0], &enabled) ||
+      !GetBoolean(env, arguments[1], &enable_clipboard_fallback) ||
+      !GetUtf8(env, arguments[2], &trigger_mode) ||
+      !GetBoolean(env, arguments[3], &auto_start) ||
+      !GetUtf8(env, arguments[4], &indicator_action) ||
+      !GetInt32OrNull(env, arguments[5], &icon_size) ||
+      !GetInt32OrNull(env, arguments[6], &dot_size) ||
+      !GetUtf8(env, arguments[7], &custom_shortcut) ||
+      !GetUtf8(env, arguments[8], &target_mode) ||
+      !GetUtf8(env, arguments[9], &custom_target_url) ||
+      !GetUtf8(env, arguments[10], &target_override_source) ||
+      !GetUtf8(env, arguments[11], &ui_language)) {
     ThrowLastError(env, "updateTray received invalid arguments");
     return nullptr;
   }
@@ -185,6 +187,7 @@ napi_value UpdateTray(napi_env env, napi_callback_info info) {
   return CreateBoolean(
       env,
       g_host && g_host->UpdateTray(enabled,
+                                   enable_clipboard_fallback,
                                    trigger_mode,
                                    auto_start,
                                    indicator_action,
@@ -199,6 +202,19 @@ napi_value UpdateTray(napi_env env, napi_callback_info info) {
 
 napi_value GetSystemUiLanguage(napi_env env, napi_callback_info) {
   return CreateString(env, Win32Host::GetSystemUiLanguage());
+}
+
+napi_value IsPhysicalKeyDown(napi_env env, napi_callback_info info) {
+  size_t count = 1;
+  napi_value arguments[1]{};
+  napi_get_cb_info(env, info, &count, arguments, nullptr, nullptr);
+
+  unsigned int virtual_key = 0;
+  if (count != 1 || !GetUint32(env, arguments[0], &virtual_key) || virtual_key > 0xff) {
+    ThrowLastError(env, "isPhysicalKeyDown(virtualKey) requires a valid virtual key");
+    return nullptr;
+  }
+  return CreateBoolean(env, (GetAsyncKeyState(virtual_key) & 0x8000) != 0);
 }
 
 napi_value ShowIndicator(napi_env env, napi_callback_info info) {
@@ -357,6 +373,7 @@ napi_value Initialize(napi_env env, napi_value exports) {
       {"start", nullptr, Start, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"stop", nullptr, Stop, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"getSystemUiLanguage", nullptr, GetSystemUiLanguage, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"isPhysicalKeyDown", nullptr, IsPhysicalKeyDown, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"updateTray", nullptr, UpdateTray, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"showIndicator", nullptr, ShowIndicator, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"hideIndicator", nullptr, HideIndicator, nullptr, nullptr, nullptr, napi_default, nullptr},

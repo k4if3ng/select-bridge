@@ -26,7 +26,6 @@ export async function acquireSingleInstance(
     const server = createInstanceServer(distribution);
     try {
       await listen(server, endpoint);
-      server.unref();
       return createPrimaryGuard(server);
     } catch (error: unknown) {
       server.removeAllListeners();

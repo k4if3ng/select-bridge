@@ -1,81 +1,71 @@
-# Headless 宿主
+# Headless 指南
 
-## 定义
+Headless 宿主不创建托盘、设置窗口或悬浮指示器，适合希望从终端启动 SelectBridge 的用户。它仍需要当前用户的图形桌面、选区权限和可用的 URL 处理器，不是服务器模式。
 
-`headless` 表示 SelectBridge 不创建自己的托盘、设置窗口或悬浮指示器。它不是服务器模式，也不代表可以脱离桌面会话运行：全局选区监听、键盘事件和 `goldendict://` URL 处理器仍依赖当前用户的图形桌面、系统权限和 Goldendict-ng。
-
-Headless 宿主与操作系统相互独立：Windows、macOS 和 Linux 都使用同一个 `HeadlessHost`，操作系统差异由 `selection-hook` 和通用 URL 打开器吸收。
+Windows、macOS 和 Linux 都可以使用 Headless；Windows 默认仍使用原生托盘宿主，macOS 和 Linux 默认使用 Headless。
 
 ## 启动
-
-安装依赖后显式选择 headless：
 
 ```shell
 pnpm install
 pnpm start -- --host=headless
 ```
 
-也可以使用快捷别名或环境变量：
+也可以使用快捷参数或环境变量：
 
 ```shell
 pnpm start -- --headless
 SELECT_BRIDGE_HOST_MODE=headless pnpm start
 ```
 
-Windows PowerShell 环境变量写法：
+Windows PowerShell：
 
 ```powershell
 $env:SELECT_BRIDGE_HOST_MODE = 'headless'
 pnpm start
 ```
 
-宿主模式只影响本次进程，不写入 `config.json`。Windows 默认仍为 `native`，macOS/Linux 默认即为 `headless`。
+宿主选择只影响本次进程，不写入 `config.json`。
 
-## 能力
+## 能力与限制
 
 | 能力 | Headless 行为 |
 | --- | --- |
-| 全局选区 | 由 `selection-hook` 提供 |
-| `immediate` | 支持 |
-| `ctrl` / `alt` / `shift` | 支持 |
-| `custom` | 通过 `key-down`/`key-up` 事件匹配 |
-| `icon` / `dot` | 本次运行切换为 `immediate`，不改写配置文件 |
-| 查询目标 | 通过系统 URL 处理器打开 `goldendict://` |
+| 全局文本选区 | 支持，取决于系统权限和当前应用 |
+| 立即转发 | 支持 |
+| Ctrl / Alt / Shift | 支持，单独按下并释放时触发 |
+| 自定义快捷键 | 支持，但不检测系统占用 |
+| 图标 / 圆点 | 不支持，本次运行改用立即转发 |
+| 自定义查询目标 | 支持 |
 | 托盘和设置窗口 | 不提供 |
-| 悬浮指示器 | 不提供 |
-| 原生系统快捷键注册 | 不提供 |
-| 快捷键占用检测 | 不提供 |
 | 开机启动管理 | 不提供 |
 
-Headless 的 `custom` 只观察 `selection-hook` 已收到的键盘事件，不调用 Windows `RegisterHotKey`，因此无法提前判断组合键是否已被系统或其他应用占用。
+Headless 自定义快捷键只能观察实际收到的键盘事件。如果组合键被桌面环境或当前应用拦截，SelectBridge 可能无法触发。
 
-## 平台要求
+## 平台提示
 
 ### Windows
 
-- 可以在未构建 `select_bridge_win32_ui.node` 的情况下显式启动 headless；
-- 仍使用 Windows 单实例保护，避免 native 与 headless 同时安装两套全局选区钩子；
-- 查询 URL 通过 `rundll32.exe url.dll,FileProtocolHandler` 交给系统；
-- Windows native 加载失败不会自动回退，必须显式选择 `--host=headless`。
+- 可以在不使用原生托盘模块的情况下显式启动 Headless；
+- native 与 Headless 仍受同一套单实例保护，不能同时监听选区；
+- Windows native 启动失败时不会自动切换到 Headless，需要显式指定 `--host=headless`。
 
 ### macOS
 
-- 为运行 SelectBridge 的终端或 Node 进程授予辅助功能权限；
-- 确认 Goldendict-ng 已注册 `goldendict://`；
-- 查询 URL 通过系统 `open` 命令发送。
+- 为运行 SelectBridge 的终端或 Node.js 进程授予辅助功能权限；
+- 确认目标应用或 `goldendict://` URL 处理器已经注册。
 
 ### Linux
 
-- X11/Wayland 下的选区与键盘事件支持范围取决于桌面环境、合成器和输入设备权限；
-- 确认 `xdg-open` 或 `gio` 可用，并已注册 `goldendict://`；
-- 无图形桌面会话时，全局选区监听和协议 URL 通常都不可用。
+- X11 和 Wayland 的支持取决于桌面环境、合成器和输入权限；
+- 确认系统可以打开配置的查询 URL；
+- 没有图形桌面会话时，通常无法监听全局选区或打开查询窗口。
 
 ## 触发方式建议
 
 - 希望选中即查：使用 `--trigger=immediate`；
-- 希望手动确认：使用 `ctrl`、`alt` 或 `shift`；
-- 希望自定义组合键：使用 `--trigger=custom --shortcut=Ctrl+Alt+G`；
-- 原配置为 `icon` 或 `dot` 时无需修改文件，headless 会在内存中改用 `immediate`。
+- 希望手动确认：使用 `ctrl`、`alt` 或 `shift`，选中后单独按下并释放；
+- 希望使用组合键：使用 `--trigger=custom --shortcut=Ctrl+Alt+G`。
 
 示例：
 
@@ -83,15 +73,15 @@ Headless 的 `custom` 只观察 `selection-hook` 已收到的键盘事件，不�
 pnpm start -- --host=headless --trigger=custom --shortcut=Ctrl+Alt+G
 ```
 
-## 排障
+## 常见问题
 
-### 选区事件没有产生
+### 没有检测到选区
 
-先确认当前应用的文本控件能被 `selection-hook` 识别，再检查系统辅助功能、输入设备或桌面会话权限。Headless 只移除了 SelectBridge 自身的 UI，不改变底层选区捕获条件。
+确认当前应用允许系统无障碍接口读取选中文字，并检查辅助功能、桌面会话和输入设备权限。不同应用和桌面环境的支持范围可能不同。
 
-### 能捕获选区但没有打开 Goldendict-ng
+### 检测到选区，但没有打开查询目标
 
-确认 Goldendict-ng 至少启动过一次，并检查系统是否能直接打开测试 URL：
+确认 GoldenDict-ng 或自定义 URL 的处理程序已经安装，并检查系统能否直接打开：
 
 ```text
 goldendict://test?target=popup
@@ -99,5 +89,4 @@ goldendict://test?target=popup
 
 ### 自定义快捷键没有触发
 
-组合键必须包含至少一个修饰键和一个普通键。Headless 不提供系统占用检测；如果组合键被桌面环境或当前应用拦截，请更换组合。
-
+组合键必须包含至少一个修饰键和一个普通键。Headless 不检测快捷键占用；如果组合被桌面环境或当前应用拦截，请更换组合。

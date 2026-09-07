@@ -17,6 +17,7 @@ SelectBridge is a lightweight desktop utility that forwards text selected in sup
 
 - Forward globally selected text to a configurable URL target.
 - Monitor global selections through [selection-hook](https://github.com/0xfullex/selection-hook).
+- Allow pausing the selection hook and toggling clipboard fallback from the Windows tray.
 - Support immediate, modifier-key, custom-shortcut, icon, and dot trigger modes.
 - Open a [GoldenDict-ng](https://github.com/xiaoyifang/goldendict-ng) popup or any custom URL template.
 - Provide a lightweight Windows native tray host and a cross-platform headless host.
@@ -58,7 +59,7 @@ The default `immediate` mode forwards automatically. Modifier and custom-shortcu
 
 The tray icon opens the same menu with either a left or right click. The first item changes between **Pause forwarding** and **Resume forwarding** according to the current state. Use the menu to select the lookup target, trigger mode, indicator size and activation, language, startup behavior, update checks, and configuration actions.
 
-For the complete Windows behavior and troubleshooting details, see [Windows implementation](docs/WINDOWS.md).
+For complete Windows behavior and troubleshooting, see the [Windows guide](docs/WINDOWS.md).
 
 ## Custom URL templates
 
@@ -79,7 +80,13 @@ Configuration paths:
 - Portable: `<portable-directory>\data\config.json`
 - Other platforms: `$XDG_CONFIG_HOME/select-bridge/config.json` or `~/.config/select-bridge/config.json`
 
-Use `SELECT_BRIDGE_CONFIG` to select another configuration path. Select **Settings → Check for updates…** to compare the installed version with the latest stable GitHub Release. SelectBridge never downloads or installs updates automatically.
+Use `SELECT_BRIDGE_CONFIG` to select another configuration path. `enableClipboardFallback` controls whether selection-hook may use simulated copy shortcuts as a last-resort text retrieval method; it defaults to `true` for compatibility and can be toggled from the Windows tray. Select **Settings → Check for updates…** to compare the installed version with the latest stable GitHub Release. SelectBridge never downloads or installs updates automatically.
+
+## FAQ
+
+### Why does selecting text in a terminal show `^C` or interrupt the command?
+
+Clipboard fallback is enabled by default. When Windows accessibility APIs cannot read the selection, it may simulate `Ctrl+C`; terminals often interpret that as an interrupt. Disable **Settings → Clipboard fallback** to prevent simulated copy. Applications that rely on clipboard retrieval may then stop producing selections. See the [Windows FAQ](docs/WINDOWS.md#FAQ) for details.
 
 ## Development
 
@@ -90,14 +97,15 @@ pnpm build:native
 pnpm test
 ```
 
-Run the cross-platform headless host with `pnpm start -- --host=headless`. Building the Windows native host additionally requires the matching Node.js architecture, Windows SDK, Visual Studio C++ tools, and Python available as `python`.
+See the [development guide](docs/DEVELOPMENT.md) for environment setup, native builds, testing, and packaging.
 
-Technical documentation:
+Documentation:
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Headless host](docs/HEADLESS.md)
 - [Development](docs/DEVELOPMENT.md)
-- [Windows implementation](docs/WINDOWS.md)
+- [Windows guide](docs/WINDOWS.md)
+- [Changelog](CHANGELOG.md)
 
 ## Open-source acknowledgements
 

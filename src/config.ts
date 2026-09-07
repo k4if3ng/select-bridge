@@ -28,6 +28,7 @@ export const DEFAULT_TARGET_URL_TEMPLATE = 'goldendict://{text}?target=popup';
 export interface AppConfig {
   schemaVersion: number;
   enabled: boolean;
+  enableClipboardFallback: boolean;
   triggerMode: TriggerMode;
   indicatorAction: IndicatorAction;
   maxTextLength: number;
@@ -53,8 +54,9 @@ export interface RuntimeOptions {
 }
 
 export const DEFAULT_CONFIG: Readonly<AppConfig> = {
-  schemaVersion: 10,
+  schemaVersion: 11,
   enabled: true,
+  enableClipboardFallback: true,
   triggerMode: 'immediate',
   indicatorAction: 'click',
   maxTextLength: 200,
@@ -300,6 +302,10 @@ function sanitizeConfig(
   return {
     schemaVersion: DEFAULT_CONFIG.schemaVersion,
     enabled: getBoolean(value.enabled, DEFAULT_CONFIG.enabled),
+    enableClipboardFallback: getBoolean(
+      value.enableClipboardFallback,
+      DEFAULT_CONFIG.enableClipboardFallback,
+    ),
     triggerMode:
       requestedTriggerMode === 'custom' && !customShortcut
         ? 'immediate'

@@ -34,6 +34,9 @@ export class TriggerController {
   private lastForwardedProgram = '';
   private lastForwardedAt = 0;
   private indicatorVisible = false;
+  private modifierTriggerDown = false;
+  private modifierTriggerChorded = false;
+  private readonly pressedKeys = new Set<number>();
   private readonly portableShortcutMatcher = new PortableShortcutMatcher();
 
   constructor(private readonly options: TriggerControllerOptions) {
@@ -74,11 +77,23 @@ export class TriggerController {
 
   handleKeyDown(event: KeyEvent): void {
     const expectedKey = getModifierKey(this.config.triggerMode);
-    if (expectedKey && event.key.toLowerCase() === expectedKey.toLowerCase()) {
-      this.triggerCandidate('shortcut');
-      return;
+    if (expectedKey) {
+      if (event.key.toLowerCase() === expectedKey.toLowerCase()) {
+        this.removeReleasedKeys();
+        if (!this.modifierTriggerDown) {
+          this.modifierTriggerDown = true;
+          this.modifierTriggerChorded = this.pressedKeys.size > 0;
+        } else if (!this.pressedKeys.has(event.virtualKey)) {
+          this.modifierTriggerChorded = true;
+        }
+        this.pressedKeys.add(event.virtualKey);
+        return;
+      }
+      if (this.modifierTriggerDown) {
+        this.modifierTriggerChorded = true;
+      }
     }
-
+    this.pressedKeys.add(event.virtualKey);
     if (
       this.config.triggerMode === 'custom' &&
       this.options.portableCustomShortcut &&
@@ -89,20 +104,40 @@ export class TriggerController {
   }
 
   handleKeyUp(event: KeyEvent): void {
+    const expectedKey = getModifierKey(this.config.triggerMode);
+    if (expectedKey && event.key.toLowerCase() === expectedKey.toLowerCase()) {
+      const shouldTrigger = this.modifierTriggerDown && !this.modifierTriggerChorded;
+      this.pressedKeys.delete(event.virtualKey);
+      this.resetModifierTrigger();
+      if (shouldTrigger) {
+        this.triggerCandidate('shortcut');
+      }
+      return;
+    }
+
     if (this.config.triggerMode === 'custom' && this.options.portableCustomShortcut) {
       this.portableShortcutMatcher.keyUp(event.key);
     }
+    this.pressedKeys.delete(event.virtualKey);
   }
 
   handlePlatformEvent(event: PlatformEvent): void {
     switch (event.type) {
       case 'indicator-click':
-        if (this.config.indicatorAction === 'click') {
+        if (
+          (this.config.triggerMode === 'icon' || this.config.triggerMode === 'dot') &&
+          this.indicatorVisible &&
+          this.config.indicatorAction === 'click'
+        ) {
           this.triggerCandidate('click');
         }
         return;
       case 'indicator-hover':
-        if (this.config.indicatorAction === 'hover') {
+        if (
+          (this.config.triggerMode === 'icon' || this.config.triggerMode === 'dot') &&
+          this.indicatorVisible &&
+          this.config.indicatorAction === 'hover'
+        ) {
           this.triggerCandidate('hover');
         }
         return;
@@ -165,6 +200,7 @@ export class TriggerController {
       case 'exit':
         this.options.onExitRequested();
         return;
+      case 'toggle-clipboard-fallback':
       case 'toggle-auto-start':
       case 'set-target-mode':
       case 'save-target-url':
@@ -180,6 +216,7 @@ export class TriggerController {
   replaceConfig(config: AppConfig, notify = true): void {
     this.config = config;
     this.cancelCandidate();
+    this.resetModifierTrigger(true);
     this.portableShortcutMatcher.setShortcut(config.customShortcut);
     this.portableShortcutMatcher.reset();
     this.options.platform.updateState(this.options.toPlatformState(config));
@@ -190,7 +227,24 @@ export class TriggerController {
 
   dispose(): void {
     this.cancelCandidate();
+    this.resetModifierTrigger(true);
     this.portableShortcutMatcher.reset();
+  }
+
+  private removeReleasedKeys(): void {
+    for (const virtualKey of this.pressedKeys) {
+      if (this.options.platform.isPhysicalKeyDown?.(virtualKey) === false) {
+        this.pressedKeys.delete(virtualKey);
+      }
+    }
+  }
+
+  private resetModifierTrigger(clearPressedKeys = false): void {
+    this.modifierTriggerDown = false;
+    this.modifierTriggerChorded = false;
+    if (clearPressedKeys) {
+      this.pressedKeys.clear();
+    }
   }
 
   private settleCandidate(candidateId: number): void {
@@ -225,7 +279,7 @@ export class TriggerController {
 
   private triggerCandidate(reason: TriggerReason): void {
     const candidate = this.candidate;
-    if (!candidate?.ready) {
+    if (!this.config.enabled || !candidate?.ready) {
       return;
     }
 

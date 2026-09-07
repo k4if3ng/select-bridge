@@ -17,6 +17,7 @@ export interface IndicatorOptions {
 
 export interface PlatformState {
   enabled: boolean;
+  enableClipboardFallback: boolean;
   triggerMode: TriggerMode;
   autoStart: boolean;
   indicatorAction: 'click' | 'hover';
@@ -47,6 +48,7 @@ export type PlatformEvent =
   | { type: 'indicator-click' }
   | { type: 'indicator-hover' }
   | { type: 'toggle-enabled' }
+  | { type: 'toggle-clipboard-fallback' }
   | { type: 'set-trigger-mode'; value: string }
   | { type: 'toggle-auto-start' }
   | { type: 'set-indicator-action'; value: string }
@@ -82,5 +84,6 @@ export interface PlatformHost {
   showError(title: string, message: string): void;
   confirm(title: string, message: string): boolean;
   registerShortcut(shortcut: string): ShortcutRegistrationResult;
+  isPhysicalKeyDown?(virtualKey: number): boolean | undefined;
   setAutoStart(enabled: boolean): Promise<boolean>;
 }

@@ -23,6 +23,7 @@ class Win32Host {
   void Stop();
 
   bool UpdateTray(bool enabled,
+                  bool enable_clipboard_fallback,
                   const std::string& trigger_mode,
                   bool auto_start,
                   const std::string& indicator_action,
@@ -163,6 +164,7 @@ class Win32Host {
   UINT taskbar_created_message_ = 0;
 
   bool enabled_ = true;
+  bool enable_clipboard_fallback_ = true;
   bool auto_start_ = false;
   std::string trigger_mode_ = "immediate";
   std::string indicator_action_ = "click";

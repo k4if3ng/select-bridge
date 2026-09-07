@@ -26,6 +26,7 @@ interface NativeAddon {
   getSystemUiLanguage(): string;
   updateTray(
     enabled: boolean,
+    enableClipboardFallback: boolean,
     triggerMode: string,
     autoStart: boolean,
     indicatorAction: string,
@@ -53,6 +54,7 @@ interface NativeAddon {
   showError(title: string, message: string): void;
   confirm(title: string, message: string): boolean;
   registerShortcut(shortcut: string): ShortcutRegistrationResult;
+  isPhysicalKeyDown?(virtualKey: number): boolean;
   setAutoStart(enabled: boolean, executablePath: string, argumentsText: string): boolean;
 }
 
@@ -92,6 +94,7 @@ export class WindowsNativeHost implements PlatformHost {
   updateState(state: PlatformState): void {
     this.addon.updateTray(
       state.enabled,
+      state.enableClipboardFallback,
       state.triggerMode,
       state.autoStart,
       state.indicatorAction,
@@ -148,6 +151,10 @@ export class WindowsNativeHost implements PlatformHost {
     return this.addon.registerShortcut(shortcut);
   }
 
+  isPhysicalKeyDown(virtualKey: number): boolean | undefined {
+    return this.addon.isPhysicalKeyDown?.(virtualKey);
+  }
+
   async setAutoStart(enabled: boolean): Promise<boolean> {
     const scriptArgument = process.argv[1] ?? '';
     const scriptPath = /\.(?:c|m)?js$/i.test(scriptArgument) ? resolve(scriptArgument) : '';
@@ -177,6 +184,7 @@ function toPlatformEvent(type: string, value?: string): PlatformEvent | undefine
     case 'indicator-click':
     case 'indicator-hover':
     case 'toggle-enabled':
+    case 'toggle-clipboard-fallback':
     case 'toggle-auto-start':
     case 'shortcut':
     case 'open-config-file':

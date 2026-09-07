@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       selection-hook:
-        specifier: ^2.0.3
-        version: 2.0.3
+        specifier: ^2.1.1
+        version: 2.1.1
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -308,8 +308,8 @@ packages:
     engines: {node: '>= 22.12.0'}
     deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
-  selection-hook@2.0.3:
-    resolution: {integrity: sha512-wo9xqfRG9lnJWtzFCvl3XBDjV/Qfm9QG/hS8IFsWgSgjJdaJCv7oDtFGefAozpNAx5WvalSjdyLKmIOXHT0Xtw==}
+  selection-hook@2.1.1:
+    resolution: {integrity: sha512-8ZqU2ModYR7Ji2s/T4GUgxBeZw2oeOJZeYMyMT6kxZUPkJUD193kGLIF1mxqlV6pYSmo0CBGi9mW8468PsMuYA==}
     engines: {node: '>=18.0.0'}
 
   semver@7.8.5:
@@ -559,7 +559,7 @@ snapshots:
     dependencies:
       cross-spawn-windows-exe: 1.2.0
 
-  selection-hook@2.0.3:
+  selection-hook@2.1.1:
     dependencies:
       node-addon-api: 8.9.1
       node-gyp-build: 4.8.4
