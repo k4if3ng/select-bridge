@@ -41,8 +41,8 @@ export class SelectionHookAdapter {
     this.hook.on('error', (error) => this.callbacks.onError(error));
   }
 
-  start(): boolean {
-    return this.hook.start({ enableClipboard: true });
+  start(enableClipboardFallback = true): boolean {
+    return this.hook.start({ enableClipboard: enableClipboardFallback });
   }
 
   stop(): boolean {
@@ -51,6 +51,10 @@ export class SelectionHookAdapter {
 
   cleanup(): void {
     this.hook.cleanup();
+  }
+
+  setClipboardFallback(enabled: boolean): boolean {
+    return enabled ? this.hook.enableClipboard() : this.hook.disableClipboard();
   }
 
   private handleSelection(data: TextSelectionData): void {

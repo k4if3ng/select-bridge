@@ -32,6 +32,8 @@ interface UiMessages {
   openReleaseFailedTitle: string;
   openReleaseFailed: string;
   detailsLabel: string;
+  clipboardFallbackTitle: string;
+  clipboardFallbackEnabled: string;
 }
 
 const MESSAGES: Record<UiLanguage, UiMessages> = {
@@ -68,6 +70,9 @@ const MESSAGES: Record<UiLanguage, UiMessages> = {
     openReleaseFailedTitle: 'Could not open download page',
     openReleaseFailed: 'The system could not open GitHub Releases.',
     detailsLabel: 'Details',
+    clipboardFallbackTitle: 'Clipboard fallback',
+    clipboardFallbackEnabled:
+      'Clipboard fallback is enabled. It may send simulated copy shortcuts to the focused application; disable it if a terminal receives unexpected input.',
   },
   'zh-CN': {
     queryTargetTitle: '查询目标',
@@ -102,6 +107,9 @@ const MESSAGES: Record<UiLanguage, UiMessages> = {
     openReleaseFailedTitle: '打开下载页面失败',
     openReleaseFailed: '系统未能打开 GitHub Releases。',
     detailsLabel: '详细信息',
+    clipboardFallbackTitle: '剪贴板回退',
+    clipboardFallbackEnabled:
+      '已开启剪贴板回退。它可能向当前获得焦点的应用发送模拟复制快捷键；如果终端出现意外输入，请关闭此项。',
   },
 };
 

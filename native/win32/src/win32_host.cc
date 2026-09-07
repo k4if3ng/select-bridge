@@ -50,6 +50,7 @@ constexpr UINT kCommandAlt = 1104;
 constexpr UINT kCommandShift = 1105;
 constexpr UINT kCommandCustom = 1106;
 constexpr UINT kCommandToggleAutoStart = 1200;
+constexpr UINT kCommandToggleClipboardFallback = 1203;
 constexpr UINT kCommandIndicatorClick = 1201;
 constexpr UINT kCommandIndicatorHover = 1202;
 constexpr UINT kCommandSetShortcut = 1300;
@@ -561,6 +562,7 @@ struct Win32Host::IndicatorRequest {
 
 struct Win32Host::TrayStateRequest {
   bool enabled;
+  bool enable_clipboard_fallback;
   bool auto_start;
   std::string trigger_mode;
   std::string indicator_action;
@@ -696,6 +698,7 @@ void Win32Host::Stop() {
 }
 
 bool Win32Host::UpdateTray(bool enabled,
+                           bool enable_clipboard_fallback,
                            const std::string& trigger_mode,
                            bool auto_start,
                            const std::string& indicator_action,
@@ -712,6 +715,7 @@ bool Win32Host::UpdateTray(bool enabled,
 
   auto request = std::make_unique<TrayStateRequest>();
   request->enabled = enabled;
+  request->enable_clipboard_fallback = enable_clipboard_fallback;
   request->trigger_mode = trigger_mode;
   request->auto_start = auto_start;
   request->indicator_action = indicator_action;
@@ -1269,6 +1273,10 @@ void Win32Host::ShowTrayMenu() {
               MF_STRING | (auto_start_ ? MF_CHECKED : MF_UNCHECKED),
               kCommandToggleAutoStart,
               LocalizedString(IDS_MENU_START_WITH_WINDOWS).c_str());
+  AppendMenuW(settings_menu,
+              MF_STRING | (enable_clipboard_fallback_ ? MF_CHECKED : MF_UNCHECKED),
+              kCommandToggleClipboardFallback,
+              LocalizedString(IDS_MENU_CLIPBOARD_FALLBACK).c_str());
   AppendMenuW(language_menu, MF_STRING, kCommandLanguageEnglish,
               LocalizedString(IDS_MENU_ENGLISH).c_str());
   AppendMenuW(language_menu, MF_STRING, kCommandLanguageSimplifiedChinese,
@@ -1391,6 +1399,9 @@ void Win32Host::HandleTrayCommand(unsigned int command) {
       break;
     case kCommandToggleAutoStart:
       SendEvent("toggle-auto-start");
+      break;
+    case kCommandToggleClipboardFallback:
+      SendEvent("toggle-clipboard-fallback");
       break;
     case kCommandLanguageEnglish:
       SendEvent("set-ui-language", "en-US");
@@ -2510,6 +2521,7 @@ LRESULT CALLBACK Win32Host::OwnerWindowProc(HWND window,
     case kUpdateTrayMessage: {
       std::unique_ptr<TrayStateRequest> request(reinterpret_cast<TrayStateRequest*>(lparam));
       host->enabled_ = request->enabled;
+      host->enable_clipboard_fallback_ = request->enable_clipboard_fallback;
       host->trigger_mode_ = request->trigger_mode;
       host->auto_start_ = request->auto_start;
       host->indicator_action_ = request->indicator_action;

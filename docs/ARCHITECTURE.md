@@ -89,7 +89,7 @@ Idle
 
 `PlatformHost` 提供生命周期、状态同步、指示器、系统协议/路径打开、原生设置结果回传、快捷键和开机启动能力，并通过 capabilities 声明实际支持项。操作系统和宿主模式是两个独立维度：`process.platform` 表示操作系统，`capabilities.hostMode` 表示当前宿主。运行参数先选择 `native` 或 `headless`，平台层再验证当前操作系统是否实现了该宿主。
 
-Windows 托盘的手动更新检查通过平台事件进入 `src/app.ts`，网络请求和版本比较留在 TypeScript 层。更新检查只读取 GitHub 最新稳定 Release；原生层仅显示结果、确认是否打开页面，并复用系统 URL 打开器。Windows SEA 构建从 `package.json` 注入当前版本，避免打包程序依赖外部项目文件。
+更新检查、配置持久化和查询目标选择留在 TypeScript 组合层；平台宿主只提供界面和系统能力。具体构建、原生接口和发布流程见 [`DEVELOPMENT.md`](DEVELOPMENT.md)。
 
 - `HeadlessHost` 可在 Windows、macOS 和 Linux 使用，不创建托盘或悬浮窗口；URL 交给通用系统打开器，自定义组合键由 `selection-hook` 的 `key-down`/`key-up` 事件匹配。
 - `WindowsNativeHost` 只在 Windows 提供，保留托盘、指示器、`RegisterHotKey` 冲突检测和开机启动。
@@ -97,7 +97,7 @@ Windows 托盘的手动更新检查通过平台事件进入 `src/app.ts`，网�
 - 显式请求未实现的 `native` 宿主会直接报错。Windows native 模块加载失败时也明确终止，不做隐式模式切换；用户可显式选择 `--host=headless`。
 - HeadlessHost 遇到 `icon`/`dot` 配置时只为本次运行切换到 `immediate`，不覆盖持久化配置。
 
-具体宿主和平台细节放在对应文档中：跨平台无界面运行见 [`HEADLESS.md`](HEADLESS.md)，Windows 原生线程、系统 API、构建和发布见 [`WINDOWS.md`](WINDOWS.md)。
+用户运行方式分别见 [`HEADLESS.md`](HEADLESS.md) 和 [`WINDOWS.md`](WINDOWS.md)；平台实现、构建和发布见 [`DEVELOPMENT.md`](DEVELOPMENT.md)。
 
 ## 翻译目标
 
@@ -107,7 +107,7 @@ URL 目标根据配置模板生成查询地址。模板中的 `{text}` 会被替
 goldendict://{text}?target=popup
 ```
 
-配置 schema 10 用 `targetMode` 保存目标预设、用 `customTargetUrlTemplate` 保存自定义模板，并用 `uiLanguage` 保存 `en-US` 或 `zh-CN`。旧配置缺少语言时按系统首选 UI 语言解析一次并持久化；非法值回退到 `en-US`。`UrlTarget` 在每次查询时通过 getter 解析有效模板，因此托盘保存或重新加载后无需重建目标对象。有效目标值优先级为 CLI、环境变量、配置、默认 GoldenDict-ng 模板。
+配置 schema 11 包含查询目标、界面语言和剪贴板回退等持久状态。旧配置缺少字段时由清洗逻辑补齐默认值；非法值回退到安全默认值。`UrlTarget` 在每次查询时解析有效模板，因此托盘保存或重新加载后无需重建目标对象。有效目标值优先级为 CLI、环境变量、配置、默认 GoldenDict-ng 模板。
 
 默认模板保持 GoldenDict-ng popup 的兼容行为。系统 URL 打开器使用参数数组调用，不经过 shell 字符串拼接。新增翻译软件时可以配置新的 URL 模板或实现新的 `TranslationTarget`，不要把目标判断写进触发控制器。
 

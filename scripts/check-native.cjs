@@ -5,6 +5,7 @@ const expectedExports = [
   'completeTargetUrlSave',
   'confirm',
   'getSystemUiLanguage',
+  'isPhysicalKeyDown',
   'openExternalUrl',
   'openPath',
   'registerShortcut',

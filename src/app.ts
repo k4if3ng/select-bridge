@@ -61,12 +61,32 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
 
   const platformState = (value: AppConfig): PlatformState => toPlatformState(value, runtime);
 
-  const applyConfig = (nextConfig: AppConfig): void => {
-    config = adaptConfigForPlatform(
+  const applyConfig = (nextConfig: AppConfig): boolean => {
+    const previousConfig = config;
+    const normalizedConfig = adaptConfigForPlatform(
       applyRuntimeOverrides(applyEnvironment(nextConfig), runtime),
       platform,
     );
+
+    if (hook && previousConfig.enabled !== normalizedConfig.enabled) {
+      const changed = normalizedConfig.enabled
+        ? hook.start(normalizedConfig.enableClipboardFallback)
+        : hook.stop();
+      if (!changed) {
+        return false;
+      }
+    } else if (
+      hook &&
+      normalizedConfig.enabled &&
+      previousConfig.enableClipboardFallback !== normalizedConfig.enableClipboardFallback &&
+      !hook.setClipboardFallback(normalizedConfig.enableClipboardFallback)
+    ) {
+      return false;
+    }
+
+    config = normalizedConfig;
     controller.replaceConfig(config, false);
+    return true;
   };
 
   const queueChange = <T>(operation: () => Promise<T>): Promise<T> => {
@@ -78,7 +98,9 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
   const persistPatch = (patch: ConfigPatch): Promise<void> =>
     queueChange(async () => {
       const updated = await configStore.mergePersistent(patch);
-      applyConfig(updated);
+      if (!applyConfig(updated)) {
+        throw new Error('运行时配置应用失败');
+      }
     });
 
   const persistControllerConfig = async (nextConfig: AppConfig): Promise<void> => {
@@ -291,6 +313,41 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
       return;
     }
 
+    if (event.type === 'toggle-enabled' || event.type === 'toggle-clipboard-fallback') {
+      const patch: ConfigPatch =
+        event.type === 'toggle-enabled'
+          ? { enabled: !config.enabled }
+          : { enableClipboardFallback: !config.enableClipboardFallback };
+      const previousConfig = config;
+      const nextConfig = { ...config, ...patch };
+      if (!applyConfig(nextConfig)) {
+        platform.showError(
+          uiMessage(config.uiLanguage, 'saveConfigFailedTitle'),
+          uiMessage(config.uiLanguage, 'saveConfigFailed'),
+        );
+        return;
+      }
+      try {
+        await configStore.mergePersistent(patch);
+        if (event.type === 'toggle-clipboard-fallback' && config.enableClipboardFallback) {
+          platform.showInfo(
+            uiMessage(config.uiLanguage, 'clipboardFallbackTitle'),
+            uiMessage(config.uiLanguage, 'clipboardFallbackEnabled'),
+          );
+        }
+      } catch (error: unknown) {
+        applyConfig(previousConfig);
+        reportConfigError(
+          platform,
+          config.uiLanguage,
+          'saveConfigFailedTitle',
+          'saveConfigFailed',
+          error,
+        );
+      }
+      return;
+    }
+
     controller.handlePlatformEvent(event);
   }
 
@@ -354,7 +411,7 @@ export async function runApplication(argv = process.argv.slice(2)): Promise<void
     onError: (error) => console.error('[selection-hook]', error),
   });
 
-  if (!hook.start()) {
+  if (config.enabled && !hook.start(config.enableClipboardFallback)) {
     await platform.stop();
     hook.cleanup();
     throw new Error('selection-hook 启动失败');
@@ -409,6 +466,7 @@ function applyRuntimeOverrides(config: AppConfig, runtime: RuntimeOptions): AppC
 function toPlatformState(config: AppConfig, runtime: RuntimeOptions): PlatformState {
   return {
     enabled: config.enabled,
+    enableClipboardFallback: config.enableClipboardFallback,
     triggerMode: config.triggerMode,
     autoStart: config.autoStart,
     indicatorAction: config.indicatorAction,

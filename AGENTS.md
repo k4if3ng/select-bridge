@@ -38,8 +38,9 @@
 
 ## 文档
 
-- [`README.md`](README.md)：安装、使用、配置和发布入口。
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)：通用模块与数据流。
-- [`docs/HEADLESS.md`](docs/HEADLESS.md)：跨平台无界面宿主、权限和排障。
-- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)：通用开发说明。
-- [`docs/WINDOWS.md`](docs/WINDOWS.md)：Windows 原生实现、构建和排障。
+- [`README.md`](README.md)：产品、安装、快速使用和公开文档入口。
+- [`docs/WINDOWS.md`](docs/WINDOWS.md)：Windows 用户指南和排障。
+- [`docs/HEADLESS.md`](docs/HEADLESS.md)：跨平台 Headless 用户指南、权限和排障。
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)：通用模块、状态和边界。
+- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)：通用与平台开发、构建和发布。
+- [`CHANGELOG.md`](CHANGELOG.md)：用户可见的版本变化。
